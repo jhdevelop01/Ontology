@@ -2,12 +2,22 @@
 
 ## 한 번에 실행 (권장)
 
+**시작:**
 ```bash
 ./start.sh
 ```
 
-모든 서비스(Neo4j, Backend, Frontend)가 자동으로 시작됩니다.
-종료하려면 `Ctrl+C` 또는 `./stop.sh` 실행
+**종료:**
+```bash
+./stop.sh
+```
+또는 실행 중 `Ctrl+C`
+
+**스크립트 파일:**
+| 파일 | 설명 |
+|------|------|
+| `start.sh` | 모든 서비스 시작 (Neo4j, Backend, Frontend) |
+| `stop.sh` | 모든 서비스 종료 |
 
 ---
 
