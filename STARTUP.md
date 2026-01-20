@@ -1,5 +1,16 @@
 # 서버 실행 절차
 
+## 한 번에 실행 (권장)
+
+```bash
+./start.sh
+```
+
+모든 서비스(Neo4j, Backend, Frontend)가 자동으로 시작됩니다.
+종료하려면 `Ctrl+C` 또는 `./stop.sh` 실행
+
+---
+
 ## 최초 설치
 
 ### 1. Neo4j 데이터베이스 실행
@@ -67,6 +78,12 @@ Neo4j 로그인: `neo4j` / `password`
 
 ## 종료 방법
 
+```bash
+# 한 번에 종료
+./stop.sh
+```
+
+또는 수동 종료:
 ```bash
 # Frontend/Backend: Ctrl+C
 
