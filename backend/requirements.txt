@@ -1,6 +1,7 @@
 # Flask and extensions
 flask>=3.0.0
 flask-cors>=4.0.0
+flask-socketio>=5.0.0
 
 # Neo4j driver
 neo4j>=5.15.0
