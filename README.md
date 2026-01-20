@@ -62,17 +62,17 @@ Neo4j 접속: http://localhost:7474 (neo4j/password)
 ### 2. 백엔드 실행
 
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
+# 프로젝트 루트에서 가상환경 생성 (최초 1회)
+python3 -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r backend/requirements.txt
 
-# Neo4j 초기화 및 샘플 데이터 생성
-python scripts/init_neo4j.py
-python scripts/generate_upw_data.py
+# Neo4j 초기화 및 샘플 데이터 생성 (최초 1회)
+python backend/scripts/init_neo4j.py
+python backend/scripts/generate_upw_data.py
 
 # 서버 실행
-python run.py
+python backend/run.py
 ```
 
 백엔드 API: http://localhost:5001
@@ -81,11 +81,24 @@ python run.py
 
 ```bash
 cd frontend
-npm install
+npm install  # 최초 1회
 npm start
 ```
 
 프론트엔드: http://localhost:3000
+
+## 빠른 실행 (설치 완료 후)
+
+```bash
+# 터미널 1: Neo4j
+cd docker && docker-compose up -d
+
+# 터미널 2: Backend (프로젝트 루트에서)
+source .venv/bin/activate && python backend/run.py
+
+# 터미널 3: Frontend
+cd frontend && npm start
+```
 
 ## 화면 구성
 
