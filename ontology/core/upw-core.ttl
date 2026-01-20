@@ -1,0 +1,726 @@
+@prefix upw: <http://example.org/upw#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix ssn: <http://www.w3.org/ns/ssn/> .
+@prefix saref: <https://saref.etsi.org/core/> .
+@prefix iof-maint: <https://spec.industrialontologies.org/ontology/maintenance/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# UPW (Ultrapure Water) Process Ontology - Core Schema
+# =============================================================================
+
+<http://example.org/upw> a owl:Ontology ;
+    rdfs:label "UPW Process Predictive Maintenance Ontology"@en ;
+    rdfs:label "초순수 공정 예지보전 온톨로지"@ko ;
+    rdfs:comment "Ontology for predictive maintenance and energy prediction in ultrapure water (UPW) manufacturing processes"@en ;
+    owl:versionInfo "1.0.0" ;
+    owl:imports <http://www.w3.org/ns/sosa/> .
+
+# =============================================================================
+# CLASSES - Equipment Hierarchy
+# =============================================================================
+
+upw:Equipment a owl:Class ;
+    rdfs:subClassOf saref:Device ;
+    rdfs:label "Equipment"@en ;
+    rdfs:label "설비"@ko ;
+    rdfs:comment "A physical device or machine used in the UPW production process"@en .
+
+# Pretreatment Equipment
+upw:PretreatmentEquipment a owl:Class ;
+    rdfs:subClassOf upw:Equipment ;
+    rdfs:label "Pretreatment Equipment"@en ;
+    rdfs:label "전처리 설비"@ko .
+
+upw:SandFilter a owl:Class ;
+    rdfs:subClassOf upw:PretreatmentEquipment ;
+    rdfs:label "Sand Filter"@en ;
+    rdfs:label "사여과기"@ko .
+
+upw:ActivatedCarbonFilter a owl:Class ;
+    rdfs:subClassOf upw:PretreatmentEquipment ;
+    rdfs:label "Activated Carbon Filter"@en ;
+    rdfs:label "활성탄 필터"@ko .
+
+upw:SedimentFilter a owl:Class ;
+    rdfs:subClassOf upw:PretreatmentEquipment ;
+    rdfs:label "Sediment Filter"@en ;
+    rdfs:label "침전물 필터"@ko .
+
+# Treatment Equipment
+upw:TreatmentEquipment a owl:Class ;
+    rdfs:subClassOf upw:Equipment ;
+    rdfs:label "Treatment Equipment"@en ;
+    rdfs:label "처리 설비"@ko .
+
+upw:ReverseOsmosis a owl:Class ;
+    rdfs:subClassOf upw:TreatmentEquipment ;
+    rdfs:label "Reverse Osmosis Unit"@en ;
+    rdfs:label "역삼투압 장치 (RO)"@ko ;
+    rdfs:comment "High-pressure membrane filtration system for removing dissolved solids"@en .
+
+upw:Electrodeionization a owl:Class ;
+    rdfs:subClassOf upw:TreatmentEquipment ;
+    rdfs:label "Electrodeionization Unit"@en ;
+    rdfs:label "전기탈이온 장치 (EDI)"@ko ;
+    rdfs:comment "Continuous deionization using ion exchange resins and electric current"@en .
+
+upw:Distiller a owl:Class ;
+    rdfs:subClassOf upw:TreatmentEquipment ;
+    rdfs:label "Distiller"@en ;
+    rdfs:label "증류 장치"@ko .
+
+# Post-treatment Equipment
+upw:PostTreatmentEquipment a owl:Class ;
+    rdfs:subClassOf upw:Equipment ;
+    rdfs:label "Post-treatment Equipment"@en ;
+    rdfs:label "후처리 설비"@ko .
+
+upw:UVSterilizer a owl:Class ;
+    rdfs:subClassOf upw:PostTreatmentEquipment ;
+    rdfs:label "UV Sterilizer"@en ;
+    rdfs:label "UV 살균기"@ko ;
+    rdfs:comment "Ultraviolet light disinfection system (254nm wavelength)"@en .
+
+upw:OzoneGenerator a owl:Class ;
+    rdfs:subClassOf upw:PostTreatmentEquipment ;
+    rdfs:label "Ozone Generator"@en ;
+    rdfs:label "오존 발생기"@ko .
+
+upw:DosingPump a owl:Class ;
+    rdfs:subClassOf upw:PostTreatmentEquipment ;
+    rdfs:label "Dosing Pump"@en ;
+    rdfs:label "약품 주입 펌프"@ko .
+
+# Support Equipment
+upw:SupportEquipment a owl:Class ;
+    rdfs:subClassOf upw:Equipment ;
+    rdfs:label "Support Equipment"@en ;
+    rdfs:label "보조 설비"@ko .
+
+upw:CirculationPump a owl:Class ;
+    rdfs:subClassOf upw:SupportEquipment ;
+    rdfs:label "Circulation Pump"@en ;
+    rdfs:label "순환 펌프"@ko .
+
+upw:StorageTank a owl:Class ;
+    rdfs:subClassOf upw:SupportEquipment ;
+    rdfs:label "Storage Tank"@en ;
+    rdfs:label "저장 탱크"@ko .
+
+# =============================================================================
+# CLASSES - Sensor Hierarchy
+# =============================================================================
+
+upw:UPWSensor a owl:Class ;
+    rdfs:subClassOf sosa:Sensor ;
+    rdfs:label "UPW Sensor"@en ;
+    rdfs:label "초순수 공정 센서"@ko .
+
+upw:PressureSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Pressure Sensor"@en ;
+    rdfs:label "압력 센서"@ko .
+
+upw:FlowSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Flow Sensor"@en ;
+    rdfs:label "유량 센서"@ko .
+
+upw:TemperatureSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Temperature Sensor"@en ;
+    rdfs:label "온도 센서"@ko .
+
+upw:ConductivitySensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Conductivity Sensor"@en ;
+    rdfs:label "전도도 센서"@ko .
+
+upw:TurbiditySensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Turbidity Sensor"@en ;
+    rdfs:label "탁도 센서"@ko .
+
+upw:UVIntensitySensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "UV Intensity Sensor"@en ;
+    rdfs:label "UV 강도 센서"@ko .
+
+upw:VibrationSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Vibration Sensor"@en ;
+    rdfs:label "진동 센서"@ko .
+
+upw:CurrentSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Current Sensor"@en ;
+    rdfs:label "전류 센서"@ko .
+
+upw:VoltageSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Voltage Sensor"@en ;
+    rdfs:label "전압 센서"@ko .
+
+upw:LevelSensor a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Level Sensor"@en ;
+    rdfs:label "수위 센서"@ko .
+
+upw:PowerMeter a owl:Class ;
+    rdfs:subClassOf upw:UPWSensor ;
+    rdfs:label "Power Meter"@en ;
+    rdfs:label "전력계"@ko .
+
+# =============================================================================
+# CLASSES - Observable Properties
+# =============================================================================
+
+upw:ObservableProperty a owl:Class ;
+    rdfs:subClassOf sosa:ObservableProperty ;
+    rdfs:label "Observable Property"@en .
+
+upw:Pressure a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Pressure"@en ;
+    rdfs:label "압력"@ko .
+
+upw:PressureDifferential a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Pressure Differential"@en ;
+    rdfs:label "압력강"@ko ;
+    rdfs:comment "Pressure difference between inlet and outlet"@en .
+
+upw:FlowRate a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Flow Rate"@en ;
+    rdfs:label "유량"@ko .
+
+upw:Temperature a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Temperature"@en ;
+    rdfs:label "온도"@ko .
+
+upw:Conductivity a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Conductivity"@en ;
+    rdfs:label "전도도"@ko .
+
+upw:Turbidity a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Turbidity"@en ;
+    rdfs:label "탁도"@ko .
+
+upw:UVIntensity a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "UV Intensity"@en ;
+    rdfs:label "UV 강도"@ko .
+
+upw:Vibration a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Vibration"@en ;
+    rdfs:label "진동"@ko .
+
+upw:ElectricCurrent a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Electric Current"@en ;
+    rdfs:label "전류"@ko .
+
+upw:Voltage a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Voltage"@en ;
+    rdfs:label "전압"@ko .
+
+upw:WaterLevel a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Water Level"@en ;
+    rdfs:label "수위"@ko .
+
+upw:PowerConsumption a owl:Class ;
+    rdfs:subClassOf upw:ObservableProperty ;
+    rdfs:label "Power Consumption"@en ;
+    rdfs:label "전력 소비량"@ko .
+
+# =============================================================================
+# CLASSES - Observation and Measurement
+# =============================================================================
+
+upw:SensorObservation a owl:Class ;
+    rdfs:subClassOf sosa:Observation ;
+    rdfs:label "Sensor Observation"@en ;
+    rdfs:label "센서 관측"@ko .
+
+upw:Unit a owl:Class ;
+    rdfs:label "Unit of Measurement"@en ;
+    rdfs:label "측정 단위"@ko .
+
+# Unit Instances
+upw:Bar a upw:Unit ;
+    rdfs:label "bar"@en .
+
+upw:Pascal a upw:Unit ;
+    rdfs:label "Pa"@en .
+
+upw:CubicMeterPerHour a upw:Unit ;
+    rdfs:label "m³/h"@en .
+
+upw:LiterPerMinute a upw:Unit ;
+    rdfs:label "L/min"@en .
+
+upw:Celsius a upw:Unit ;
+    rdfs:label "°C"@en .
+
+upw:MicroSiemensPerCm a upw:Unit ;
+    rdfs:label "μS/cm"@en .
+
+upw:NTU a upw:Unit ;
+    rdfs:label "NTU"@en .
+
+upw:MilliwattPerSquareCm a upw:Unit ;
+    rdfs:label "mW/cm²"@en .
+
+upw:MillimeterPerSecond a upw:Unit ;
+    rdfs:label "mm/s"@en .
+
+upw:Ampere a upw:Unit ;
+    rdfs:label "A"@en .
+
+upw:Volt a upw:Unit ;
+    rdfs:label "V"@en .
+
+upw:Kilowatt a upw:Unit ;
+    rdfs:label "kW"@en .
+
+upw:KilowattHour a upw:Unit ;
+    rdfs:label "kWh"@en .
+
+upw:Percent a upw:Unit ;
+    rdfs:label "%"@en .
+
+upw:Meter a upw:Unit ;
+    rdfs:label "m"@en .
+
+# =============================================================================
+# CLASSES - Maintenance
+# =============================================================================
+
+upw:MaintenanceActivity a owl:Class ;
+    rdfs:subClassOf iof-maint:MaintenanceActivity ;
+    rdfs:label "Maintenance Activity"@en ;
+    rdfs:label "유지보수 활동"@ko .
+
+upw:PreventiveMaintenance a owl:Class ;
+    rdfs:subClassOf upw:MaintenanceActivity ;
+    rdfs:label "Preventive Maintenance"@en ;
+    rdfs:label "예방 정비"@ko .
+
+upw:CorrectiveMaintenance a owl:Class ;
+    rdfs:subClassOf upw:MaintenanceActivity ;
+    rdfs:label "Corrective Maintenance"@en ;
+    rdfs:label "교정 정비"@ko .
+
+upw:ConditionBasedMaintenance a owl:Class ;
+    rdfs:subClassOf upw:MaintenanceActivity ;
+    rdfs:label "Condition-Based Maintenance"@en ;
+    rdfs:label "상태 기반 정비"@ko .
+
+# Specific Maintenance Activities
+upw:MembraneReplacement a owl:Class ;
+    rdfs:subClassOf upw:PreventiveMaintenance ;
+    rdfs:label "Membrane Replacement"@en ;
+    rdfs:label "멤브레인 교체"@ko .
+
+upw:FilterReplacement a owl:Class ;
+    rdfs:subClassOf upw:PreventiveMaintenance ;
+    rdfs:label "Filter Replacement"@en ;
+    rdfs:label "필터 교체"@ko .
+
+upw:UVLampReplacement a owl:Class ;
+    rdfs:subClassOf upw:PreventiveMaintenance ;
+    rdfs:label "UV Lamp Replacement"@en ;
+    rdfs:label "UV 램프 교체"@ko .
+
+upw:ResinRegeneration a owl:Class ;
+    rdfs:subClassOf upw:PreventiveMaintenance ;
+    rdfs:label "Resin Regeneration"@en ;
+    rdfs:label "수지 재생"@ko .
+
+# =============================================================================
+# CLASSES - Failure Modes
+# =============================================================================
+
+upw:FailureMode a owl:Class ;
+    rdfs:label "Failure Mode"@en ;
+    rdfs:label "고장 모드"@ko .
+
+upw:MembraneFouling a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "Membrane Fouling"@en ;
+    rdfs:label "멤브레인 오염"@ko .
+
+upw:MembraneDamage a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "Membrane Damage"@en ;
+    rdfs:label "멤브레인 손상"@ko .
+
+upw:ResinExhaustion a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "Resin Exhaustion"@en ;
+    rdfs:label "수지 소진"@ko .
+
+upw:PumpBearingWear a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "Pump Bearing Wear"@en ;
+    rdfs:label "펌프 베어링 마모"@ko .
+
+upw:UVLampDegradation a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "UV Lamp Degradation"@en ;
+    rdfs:label "UV 램프 열화"@ko .
+
+upw:FilterClogging a owl:Class ;
+    rdfs:subClassOf upw:FailureMode ;
+    rdfs:label "Filter Clogging"@en ;
+    rdfs:label "필터 막힘"@ko .
+
+# =============================================================================
+# CLASSES - Health Status
+# =============================================================================
+
+upw:HealthStatus a owl:Class ;
+    rdfs:label "Health Status"@en ;
+    rdfs:label "건강 상태"@ko .
+
+upw:Normal a upw:HealthStatus ;
+    rdfs:label "Normal"@en ;
+    rdfs:label "정상"@ko .
+
+upw:Warning a upw:HealthStatus ;
+    rdfs:label "Warning"@en ;
+    rdfs:label "경고"@ko .
+
+upw:Critical a upw:HealthStatus ;
+    rdfs:label "Critical"@en ;
+    rdfs:label "심각"@ko .
+
+# =============================================================================
+# CLASSES - Anomaly Detection
+# =============================================================================
+
+upw:AnomalyDetection a owl:Class ;
+    rdfs:label "Anomaly Detection"@en ;
+    rdfs:label "이상 탐지"@ko .
+
+upw:AnomalyType a owl:Class ;
+    rdfs:label "Anomaly Type"@en ;
+    rdfs:label "이상 유형"@ko .
+
+upw:PressureAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Pressure Anomaly"@en ;
+    rdfs:label "압력 이상"@ko .
+
+upw:FlowAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Flow Anomaly"@en ;
+    rdfs:label "유량 이상"@ko .
+
+upw:QualityAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Quality Anomaly"@en ;
+    rdfs:label "품질 이상"@ko .
+
+upw:TemperatureAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Temperature Anomaly"@en ;
+    rdfs:label "온도 이상"@ko .
+
+upw:VibrationAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Vibration Anomaly"@en ;
+    rdfs:label "진동 이상"@ko .
+
+upw:EnergyAnomaly a owl:Class ;
+    rdfs:subClassOf upw:AnomalyType ;
+    rdfs:label "Energy Anomaly"@en ;
+    rdfs:label "에너지 이상"@ko .
+
+# =============================================================================
+# CLASSES - Energy Prediction
+# =============================================================================
+
+upw:EnergyPrediction a owl:Class ;
+    rdfs:label "Energy Prediction"@en ;
+    rdfs:label "에너지 예측"@ko .
+
+# =============================================================================
+# OBJECT PROPERTIES
+# =============================================================================
+
+upw:hasSensor a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range upw:UPWSensor ;
+    rdfs:label "has sensor"@en ;
+    rdfs:label "센서를 가짐"@ko .
+
+upw:isAttachedTo a owl:ObjectProperty ;
+    owl:inverseOf upw:hasSensor ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range upw:Equipment ;
+    rdfs:label "is attached to"@en .
+
+upw:hasObservation a owl:ObjectProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range upw:SensorObservation ;
+    rdfs:label "has observation"@en .
+
+upw:observedProperty a owl:ObjectProperty ;
+    rdfs:subPropertyOf sosa:observedProperty ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range upw:ObservableProperty ;
+    rdfs:label "observed property"@en .
+
+upw:hasFeatureOfInterest a owl:ObjectProperty ;
+    rdfs:subPropertyOf sosa:hasFeatureOfInterest ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range upw:Equipment ;
+    rdfs:label "has feature of interest"@en .
+
+upw:madeBySensor a owl:ObjectProperty ;
+    rdfs:subPropertyOf sosa:madeBySensor ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range upw:UPWSensor ;
+    rdfs:label "made by sensor"@en .
+
+upw:hasUnit a owl:ObjectProperty ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range upw:Unit ;
+    rdfs:label "has unit"@en .
+
+upw:hasFailureMode a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range upw:FailureMode ;
+    rdfs:label "has failure mode"@en ;
+    rdfs:label "고장 모드를 가짐"@ko .
+
+upw:requiresMaintenance a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range upw:MaintenanceActivity ;
+    rdfs:label "requires maintenance"@en .
+
+upw:triggeredBy a owl:ObjectProperty ;
+    rdfs:domain upw:MaintenanceActivity ;
+    rdfs:range upw:FailureMode ;
+    rdfs:label "triggered by"@en .
+
+upw:hasHealthStatus a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range upw:HealthStatus ;
+    rdfs:label "has health status"@en .
+
+upw:hasAnomalyType a owl:ObjectProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range upw:AnomalyType ;
+    rdfs:label "has anomaly type"@en .
+
+upw:relatedEquipment a owl:ObjectProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range upw:Equipment ;
+    rdfs:label "related equipment"@en .
+
+upw:relatedObservation a owl:ObjectProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range upw:SensorObservation ;
+    rdfs:label "related observation"@en .
+
+upw:hasComponent a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range upw:Equipment ;
+    rdfs:label "has component"@en .
+
+upw:isComponentOf a owl:ObjectProperty ;
+    owl:inverseOf upw:hasComponent ;
+    rdfs:label "is component of"@en .
+
+upw:locatedIn a owl:ObjectProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:label "located in"@en .
+
+# =============================================================================
+# DATA PROPERTIES
+# =============================================================================
+
+upw:equipmentId a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "equipment ID"@en .
+
+upw:equipmentName a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "equipment name"@en .
+
+upw:manufacturer a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "manufacturer"@en .
+
+upw:modelNumber a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:string ;
+    rdfs:label "model number"@en .
+
+upw:installDate a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:date ;
+    rdfs:label "install date"@en .
+
+upw:ratedPower a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:float ;
+    rdfs:label "rated power (kW)"@en .
+
+upw:sensorId a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:string ;
+    rdfs:label "sensor ID"@en .
+
+upw:sensorName a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:string ;
+    rdfs:label "sensor name"@en .
+
+upw:minValue a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "minimum value"@en .
+
+upw:maxValue a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "maximum value"@en .
+
+upw:normalRangeMin a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "normal range minimum"@en .
+
+upw:normalRangeMax a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "normal range maximum"@en .
+
+upw:warningThreshold a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "warning threshold"@en .
+
+upw:criticalThreshold a owl:DatatypeProperty ;
+    rdfs:domain upw:UPWSensor ;
+    rdfs:range xsd:float ;
+    rdfs:label "critical threshold"@en .
+
+upw:hasResult a owl:DatatypeProperty ;
+    rdfs:subPropertyOf sosa:hasSimpleResult ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range xsd:float ;
+    rdfs:label "has result"@en .
+
+upw:resultTime a owl:DatatypeProperty ;
+    rdfs:subPropertyOf sosa:resultTime ;
+    rdfs:domain upw:SensorObservation ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "result time"@en .
+
+upw:detectedAt a owl:DatatypeProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "detected at"@en .
+
+upw:severity a owl:DatatypeProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range xsd:float ;
+    rdfs:comment "Severity score from 0 to 1"@en ;
+    rdfs:label "severity"@en .
+
+upw:anomalyScore a owl:DatatypeProperty ;
+    rdfs:domain upw:AnomalyDetection ;
+    rdfs:range xsd:float ;
+    rdfs:label "anomaly score"@en .
+
+upw:healthScore a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:float ;
+    rdfs:comment "Health score from 0 to 100"@en ;
+    rdfs:label "health score"@en .
+
+upw:predictionTime a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "prediction time"@en .
+
+upw:targetTime a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:dateTime ;
+    rdfs:label "target time"@en .
+
+upw:predictedValue a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:float ;
+    rdfs:label "predicted value"@en .
+
+upw:actualValue a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:float ;
+    rdfs:label "actual value"@en .
+
+upw:confidence a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:float ;
+    rdfs:label "confidence"@en .
+
+upw:interval a owl:DatatypeProperty ;
+    rdfs:domain upw:EnergyPrediction ;
+    rdfs:range xsd:duration ;
+    rdfs:label "interval"@en .
+
+upw:maintenanceDate a owl:DatatypeProperty ;
+    rdfs:domain upw:MaintenanceActivity ;
+    rdfs:range xsd:date ;
+    rdfs:label "maintenance date"@en .
+
+upw:scheduledDate a owl:DatatypeProperty ;
+    rdfs:domain upw:MaintenanceActivity ;
+    rdfs:range xsd:date ;
+    rdfs:label "scheduled date"@en .
+
+upw:completedDate a owl:DatatypeProperty ;
+    rdfs:domain upw:MaintenanceActivity ;
+    rdfs:range xsd:date ;
+    rdfs:label "completed date"@en .
+
+upw:maintenanceCost a owl:DatatypeProperty ;
+    rdfs:domain upw:MaintenanceActivity ;
+    rdfs:range xsd:float ;
+    rdfs:label "maintenance cost"@en .
+
+upw:operatingHours a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:float ;
+    rdfs:label "operating hours"@en .
+
+upw:mtbf a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:float ;
+    rdfs:comment "Mean Time Between Failures (hours)"@en ;
+    rdfs:label "MTBF"@en .
+
+upw:mttr a owl:DatatypeProperty ;
+    rdfs:domain upw:Equipment ;
+    rdfs:range xsd:float ;
+    rdfs:comment "Mean Time To Repair (hours)"@en ;
+    rdfs:label "MTTR"@en .

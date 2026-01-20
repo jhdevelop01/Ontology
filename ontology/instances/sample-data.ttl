@@ -1,0 +1,438 @@
+@prefix upw: <http://example.org/upw#> .
+@prefix sosa: <http://www.w3.org/ns/sosa/> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+# =============================================================================
+# Sample Instance Data - UPW Process Equipment and Sensors
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Equipment Instances
+# -----------------------------------------------------------------------------
+
+# RO (Reverse Osmosis) Unit
+upw:RO-001 a upw:ReverseOsmosis ;
+    upw:equipmentId "RO-001" ;
+    upw:equipmentName "Primary RO Unit"@en ;
+    upw:equipmentName "1차 역삼투압 장치"@ko ;
+    upw:manufacturer "Dow Chemical" ;
+    upw:modelNumber "FILMTEC BW30-400" ;
+    upw:installDate "2022-03-15"^^xsd:date ;
+    upw:ratedPower "45.0"^^xsd:float ;
+    upw:operatingHours "15000.0"^^xsd:float ;
+    upw:healthScore "85.5"^^xsd:float ;
+    upw:hasHealthStatus upw:Normal ;
+    upw:hasFailureMode upw:MembraneFouling, upw:MembraneDamage ;
+    upw:hasSensor upw:RO-001-PS-IN, upw:RO-001-PS-OUT, upw:RO-001-FS, upw:RO-001-CS, upw:RO-001-TS, upw:RO-001-PM .
+
+# EDI (Electrodeionization) Unit
+upw:EDI-001 a upw:Electrodeionization ;
+    upw:equipmentId "EDI-001" ;
+    upw:equipmentName "EDI Module A"@en ;
+    upw:equipmentName "EDI 모듈 A"@ko ;
+    upw:manufacturer "IONPURE" ;
+    upw:modelNumber "CEDI-LX" ;
+    upw:installDate "2022-03-20"^^xsd:date ;
+    upw:ratedPower "25.0"^^xsd:float ;
+    upw:operatingHours "14500.0"^^xsd:float ;
+    upw:healthScore "78.2"^^xsd:float ;
+    upw:hasHealthStatus upw:Warning ;
+    upw:hasFailureMode upw:ResinExhaustion ;
+    upw:hasSensor upw:EDI-001-CS-OUT, upw:EDI-001-VS, upw:EDI-001-AS, upw:EDI-001-PS, upw:EDI-001-PM .
+
+# UV Sterilizer
+upw:UV-001 a upw:UVSterilizer ;
+    upw:equipmentId "UV-001" ;
+    upw:equipmentName "UV Sterilizer Unit 1"@en ;
+    upw:equipmentName "UV 살균기 1호기"@ko ;
+    upw:manufacturer "Trojan Technologies" ;
+    upw:modelNumber "UV Swift SC" ;
+    upw:installDate "2022-04-01"^^xsd:date ;
+    upw:ratedPower "8.0"^^xsd:float ;
+    upw:operatingHours "14000.0"^^xsd:float ;
+    upw:healthScore "72.0"^^xsd:float ;
+    upw:hasHealthStatus upw:Warning ;
+    upw:hasFailureMode upw:UVLampDegradation ;
+    upw:hasSensor upw:UV-001-UIS, upw:UV-001-FS, upw:UV-001-TS, upw:UV-001-PM .
+
+# Circulation Pump
+upw:PUMP-001 a upw:CirculationPump ;
+    upw:equipmentId "PUMP-001" ;
+    upw:equipmentName "Main Circulation Pump"@en ;
+    upw:equipmentName "메인 순환 펌프"@ko ;
+    upw:manufacturer "Grundfos" ;
+    upw:modelNumber "CRN 45-3" ;
+    upw:installDate "2022-03-10"^^xsd:date ;
+    upw:ratedPower "15.0"^^xsd:float ;
+    upw:operatingHours "16000.0"^^xsd:float ;
+    upw:healthScore "92.3"^^xsd:float ;
+    upw:hasHealthStatus upw:Normal ;
+    upw:hasFailureMode upw:PumpBearingWear ;
+    upw:hasSensor upw:PUMP-001-VBS, upw:PUMP-001-TS, upw:PUMP-001-AS, upw:PUMP-001-PM .
+
+# Storage Tank
+upw:TANK-001 a upw:StorageTank ;
+    upw:equipmentId "TANK-001" ;
+    upw:equipmentName "UPW Storage Tank"@en ;
+    upw:equipmentName "초순수 저장 탱크"@ko ;
+    upw:manufacturer "Pall Corporation" ;
+    upw:modelNumber "SS316L-5000L" ;
+    upw:installDate "2022-02-20"^^xsd:date ;
+    upw:operatingHours "17000.0"^^xsd:float ;
+    upw:healthScore "95.0"^^xsd:float ;
+    upw:hasHealthStatus upw:Normal ;
+    upw:hasSensor upw:TANK-001-LS, upw:TANK-001-CS, upw:TANK-001-TBS .
+
+# -----------------------------------------------------------------------------
+# Sensor Instances - RO Unit
+# -----------------------------------------------------------------------------
+
+upw:RO-001-PS-IN a upw:PressureSensor ;
+    upw:sensorId "RO-001-PS-IN" ;
+    upw:sensorName "RO Inlet Pressure"@en ;
+    upw:sensorName "RO 입구 압력"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "20.0"^^xsd:float ;
+    upw:normalRangeMin "8.0"^^xsd:float ;
+    upw:normalRangeMax "15.0"^^xsd:float ;
+    upw:warningThreshold "16.0"^^xsd:float ;
+    upw:criticalThreshold "18.0"^^xsd:float .
+
+upw:RO-001-PS-OUT a upw:PressureSensor ;
+    upw:sensorId "RO-001-PS-OUT" ;
+    upw:sensorName "RO Outlet Pressure"@en ;
+    upw:sensorName "RO 출구 압력"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "20.0"^^xsd:float ;
+    upw:normalRangeMin "5.0"^^xsd:float ;
+    upw:normalRangeMax "12.0"^^xsd:float ;
+    upw:warningThreshold "4.0"^^xsd:float ;
+    upw:criticalThreshold "3.0"^^xsd:float .
+
+upw:RO-001-FS a upw:FlowSensor ;
+    upw:sensorId "RO-001-FS" ;
+    upw:sensorName "RO Permeate Flow"@en ;
+    upw:sensorName "RO 투과수 유량"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "100.0"^^xsd:float ;
+    upw:normalRangeMin "40.0"^^xsd:float ;
+    upw:normalRangeMax "60.0"^^xsd:float ;
+    upw:warningThreshold "35.0"^^xsd:float ;
+    upw:criticalThreshold "30.0"^^xsd:float .
+
+upw:RO-001-CS a upw:ConductivitySensor ;
+    upw:sensorId "RO-001-CS" ;
+    upw:sensorName "RO Permeate Conductivity"@en ;
+    upw:sensorName "RO 투과수 전도도"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "50.0"^^xsd:float ;
+    upw:normalRangeMin "0.5"^^xsd:float ;
+    upw:normalRangeMax "5.0"^^xsd:float ;
+    upw:warningThreshold "8.0"^^xsd:float ;
+    upw:criticalThreshold "10.0"^^xsd:float .
+
+upw:RO-001-TS a upw:TemperatureSensor ;
+    upw:sensorId "RO-001-TS" ;
+    upw:sensorName "RO Inlet Temperature"@en ;
+    upw:sensorName "RO 입수 온도"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "50.0"^^xsd:float ;
+    upw:normalRangeMin "20.0"^^xsd:float ;
+    upw:normalRangeMax "30.0"^^xsd:float ;
+    upw:warningThreshold "35.0"^^xsd:float ;
+    upw:criticalThreshold "40.0"^^xsd:float .
+
+upw:RO-001-PM a upw:PowerMeter ;
+    upw:sensorId "RO-001-PM" ;
+    upw:sensorName "RO Power Consumption"@en ;
+    upw:sensorName "RO 전력 소비량"@ko ;
+    upw:isAttachedTo upw:RO-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "60.0"^^xsd:float ;
+    upw:normalRangeMin "30.0"^^xsd:float ;
+    upw:normalRangeMax "45.0"^^xsd:float .
+
+# -----------------------------------------------------------------------------
+# Sensor Instances - EDI Unit
+# -----------------------------------------------------------------------------
+
+upw:EDI-001-CS-OUT a upw:ConductivitySensor ;
+    upw:sensorId "EDI-001-CS-OUT" ;
+    upw:sensorName "EDI Outlet Conductivity"@en ;
+    upw:sensorName "EDI 출수 전도도"@ko ;
+    upw:isAttachedTo upw:EDI-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "10.0"^^xsd:float ;
+    upw:normalRangeMin "0.05"^^xsd:float ;
+    upw:normalRangeMax "1.0"^^xsd:float ;
+    upw:warningThreshold "3.0"^^xsd:float ;
+    upw:criticalThreshold "5.0"^^xsd:float .
+
+upw:EDI-001-VS a upw:VoltageSensor ;
+    upw:sensorId "EDI-001-VS" ;
+    upw:sensorName "EDI Module Voltage"@en ;
+    upw:sensorName "EDI 모듈 전압"@ko ;
+    upw:isAttachedTo upw:EDI-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "30.0"^^xsd:float ;
+    upw:normalRangeMin "5.0"^^xsd:float ;
+    upw:normalRangeMax "15.0"^^xsd:float ;
+    upw:warningThreshold "18.0"^^xsd:float ;
+    upw:criticalThreshold "20.0"^^xsd:float .
+
+upw:EDI-001-AS a upw:CurrentSensor ;
+    upw:sensorId "EDI-001-AS" ;
+    upw:sensorName "EDI Module Current"@en ;
+    upw:sensorName "EDI 모듈 전류"@ko ;
+    upw:isAttachedTo upw:EDI-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "50.0"^^xsd:float ;
+    upw:normalRangeMin "10.0"^^xsd:float ;
+    upw:normalRangeMax "30.0"^^xsd:float ;
+    upw:warningThreshold "35.0"^^xsd:float ;
+    upw:criticalThreshold "40.0"^^xsd:float .
+
+upw:EDI-001-PS a upw:PressureSensor ;
+    upw:sensorId "EDI-001-PS" ;
+    upw:sensorName "EDI Differential Pressure"@en ;
+    upw:sensorName "EDI 차압"@ko ;
+    upw:isAttachedTo upw:EDI-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "3.0"^^xsd:float ;
+    upw:normalRangeMin "0.2"^^xsd:float ;
+    upw:normalRangeMax "0.5"^^xsd:float ;
+    upw:warningThreshold "0.8"^^xsd:float ;
+    upw:criticalThreshold "1.0"^^xsd:float .
+
+upw:EDI-001-PM a upw:PowerMeter ;
+    upw:sensorId "EDI-001-PM" ;
+    upw:sensorName "EDI Power Consumption"@en ;
+    upw:sensorName "EDI 전력 소비량"@ko ;
+    upw:isAttachedTo upw:EDI-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "35.0"^^xsd:float .
+
+# -----------------------------------------------------------------------------
+# Sensor Instances - UV Sterilizer
+# -----------------------------------------------------------------------------
+
+upw:UV-001-UIS a upw:UVIntensitySensor ;
+    upw:sensorId "UV-001-UIS" ;
+    upw:sensorName "UV Lamp Intensity"@en ;
+    upw:sensorName "UV 램프 강도"@ko ;
+    upw:isAttachedTo upw:UV-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "100.0"^^xsd:float ;
+    upw:normalRangeMin "80.0"^^xsd:float ;
+    upw:normalRangeMax "100.0"^^xsd:float ;
+    upw:warningThreshold "70.0"^^xsd:float ;
+    upw:criticalThreshold "60.0"^^xsd:float .
+
+upw:UV-001-FS a upw:FlowSensor ;
+    upw:sensorId "UV-001-FS" ;
+    upw:sensorName "UV Chamber Flow"@en ;
+    upw:sensorName "UV 챔버 유량"@ko ;
+    upw:isAttachedTo upw:UV-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "80.0"^^xsd:float ;
+    upw:normalRangeMin "30.0"^^xsd:float ;
+    upw:normalRangeMax "50.0"^^xsd:float .
+
+upw:UV-001-TS a upw:TemperatureSensor ;
+    upw:sensorId "UV-001-TS" ;
+    upw:sensorName "UV Chamber Temperature"@en ;
+    upw:sensorName "UV 챔버 온도"@ko ;
+    upw:isAttachedTo upw:UV-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "60.0"^^xsd:float ;
+    upw:normalRangeMin "25.0"^^xsd:float ;
+    upw:normalRangeMax "40.0"^^xsd:float ;
+    upw:warningThreshold "45.0"^^xsd:float ;
+    upw:criticalThreshold "50.0"^^xsd:float .
+
+upw:UV-001-PM a upw:PowerMeter ;
+    upw:sensorId "UV-001-PM" ;
+    upw:sensorName "UV Power Consumption"@en ;
+    upw:sensorName "UV 전력 소비량"@ko ;
+    upw:isAttachedTo upw:UV-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "12.0"^^xsd:float .
+
+# -----------------------------------------------------------------------------
+# Sensor Instances - Circulation Pump
+# -----------------------------------------------------------------------------
+
+upw:PUMP-001-VBS a upw:VibrationSensor ;
+    upw:sensorId "PUMP-001-VBS" ;
+    upw:sensorName "Pump Vibration"@en ;
+    upw:sensorName "펌프 진동"@ko ;
+    upw:isAttachedTo upw:PUMP-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "20.0"^^xsd:float ;
+    upw:normalRangeMin "0.5"^^xsd:float ;
+    upw:normalRangeMax "4.0"^^xsd:float ;
+    upw:warningThreshold "7.0"^^xsd:float ;
+    upw:criticalThreshold "10.0"^^xsd:float .
+
+upw:PUMP-001-TS a upw:TemperatureSensor ;
+    upw:sensorId "PUMP-001-TS" ;
+    upw:sensorName "Pump Motor Temperature"@en ;
+    upw:sensorName "펌프 모터 온도"@ko ;
+    upw:isAttachedTo upw:PUMP-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "100.0"^^xsd:float ;
+    upw:normalRangeMin "25.0"^^xsd:float ;
+    upw:normalRangeMax "45.0"^^xsd:float ;
+    upw:warningThreshold "55.0"^^xsd:float ;
+    upw:criticalThreshold "60.0"^^xsd:float .
+
+upw:PUMP-001-AS a upw:CurrentSensor ;
+    upw:sensorId "PUMP-001-AS" ;
+    upw:sensorName "Pump Motor Current"@en ;
+    upw:sensorName "펌프 모터 전류"@ko ;
+    upw:isAttachedTo upw:PUMP-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "40.0"^^xsd:float ;
+    upw:normalRangeMin "12.0"^^xsd:float ;
+    upw:normalRangeMax "20.0"^^xsd:float ;
+    upw:warningThreshold "25.0"^^xsd:float ;
+    upw:criticalThreshold "30.0"^^xsd:float .
+
+upw:PUMP-001-PM a upw:PowerMeter ;
+    upw:sensorId "PUMP-001-PM" ;
+    upw:sensorName "Pump Power Consumption"@en ;
+    upw:sensorName "펌프 전력 소비량"@ko ;
+    upw:isAttachedTo upw:PUMP-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "20.0"^^xsd:float .
+
+# -----------------------------------------------------------------------------
+# Sensor Instances - Storage Tank
+# -----------------------------------------------------------------------------
+
+upw:TANK-001-LS a upw:LevelSensor ;
+    upw:sensorId "TANK-001-LS" ;
+    upw:sensorName "Tank Water Level"@en ;
+    upw:sensorName "탱크 수위"@ko ;
+    upw:isAttachedTo upw:TANK-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "100.0"^^xsd:float ;
+    upw:normalRangeMin "30.0"^^xsd:float ;
+    upw:normalRangeMax "90.0"^^xsd:float ;
+    upw:warningThreshold "20.0"^^xsd:float ;
+    upw:criticalThreshold "10.0"^^xsd:float .
+
+upw:TANK-001-CS a upw:ConductivitySensor ;
+    upw:sensorId "TANK-001-CS" ;
+    upw:sensorName "Tank Water Conductivity"@en ;
+    upw:sensorName "탱크 수질 전도도"@ko ;
+    upw:isAttachedTo upw:TANK-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "5.0"^^xsd:float ;
+    upw:normalRangeMin "0.05"^^xsd:float ;
+    upw:normalRangeMax "0.5"^^xsd:float ;
+    upw:warningThreshold "0.8"^^xsd:float ;
+    upw:criticalThreshold "1.0"^^xsd:float .
+
+upw:TANK-001-TBS a upw:TurbiditySensor ;
+    upw:sensorId "TANK-001-TBS" ;
+    upw:sensorName "Tank Water Turbidity"@en ;
+    upw:sensorName "탱크 수질 탁도"@ko ;
+    upw:isAttachedTo upw:TANK-001 ;
+    upw:minValue "0.0"^^xsd:float ;
+    upw:maxValue "1.0"^^xsd:float ;
+    upw:normalRangeMin "0.0"^^xsd:float ;
+    upw:normalRangeMax "0.05"^^xsd:float ;
+    upw:warningThreshold "0.08"^^xsd:float ;
+    upw:criticalThreshold "0.1"^^xsd:float .
+
+# -----------------------------------------------------------------------------
+# Sample Observations (Latest readings)
+# -----------------------------------------------------------------------------
+
+upw:OBS-RO-001-PS-IN-001 a upw:SensorObservation ;
+    upw:madeBySensor upw:RO-001-PS-IN ;
+    upw:hasFeatureOfInterest upw:RO-001 ;
+    upw:observedProperty upw:Pressure ;
+    upw:hasResult "12.5"^^xsd:float ;
+    upw:hasUnit upw:Bar ;
+    upw:resultTime "2024-01-20T10:30:00Z"^^xsd:dateTime .
+
+upw:OBS-RO-001-CS-001 a upw:SensorObservation ;
+    upw:madeBySensor upw:RO-001-CS ;
+    upw:hasFeatureOfInterest upw:RO-001 ;
+    upw:observedProperty upw:Conductivity ;
+    upw:hasResult "3.2"^^xsd:float ;
+    upw:hasUnit upw:MicroSiemensPerCm ;
+    upw:resultTime "2024-01-20T10:30:00Z"^^xsd:dateTime .
+
+upw:OBS-EDI-001-CS-001 a upw:SensorObservation ;
+    upw:madeBySensor upw:EDI-001-CS-OUT ;
+    upw:hasFeatureOfInterest upw:EDI-001 ;
+    upw:observedProperty upw:Conductivity ;
+    upw:hasResult "0.8"^^xsd:float ;
+    upw:hasUnit upw:MicroSiemensPerCm ;
+    upw:resultTime "2024-01-20T10:30:00Z"^^xsd:dateTime .
+
+upw:OBS-UV-001-UIS-001 a upw:SensorObservation ;
+    upw:madeBySensor upw:UV-001-UIS ;
+    upw:hasFeatureOfInterest upw:UV-001 ;
+    upw:observedProperty upw:UVIntensity ;
+    upw:hasResult "75.0"^^xsd:float ;
+    upw:hasUnit upw:Percent ;
+    upw:resultTime "2024-01-20T10:30:00Z"^^xsd:dateTime .
+
+upw:OBS-PUMP-001-VBS-001 a upw:SensorObservation ;
+    upw:madeBySensor upw:PUMP-001-VBS ;
+    upw:hasFeatureOfInterest upw:PUMP-001 ;
+    upw:observedProperty upw:Vibration ;
+    upw:hasResult "2.8"^^xsd:float ;
+    upw:hasUnit upw:MillimeterPerSecond ;
+    upw:resultTime "2024-01-20T10:30:00Z"^^xsd:dateTime .
+
+# -----------------------------------------------------------------------------
+# Sample Anomaly Detection
+# -----------------------------------------------------------------------------
+
+upw:ANOMALY-001 a upw:AnomalyDetection ;
+    upw:hasAnomalyType upw:QualityAnomaly ;
+    upw:relatedEquipment upw:UV-001 ;
+    upw:relatedObservation upw:OBS-UV-001-UIS-001 ;
+    upw:detectedAt "2024-01-20T10:35:00Z"^^xsd:dateTime ;
+    upw:severity "0.6"^^xsd:float ;
+    upw:anomalyScore "0.72"^^xsd:float ;
+    rdfs:comment "UV lamp intensity below warning threshold"@en .
+
+# -----------------------------------------------------------------------------
+# Sample Energy Prediction
+# -----------------------------------------------------------------------------
+
+upw:ENERGY-PRED-001 a upw:EnergyPrediction ;
+    upw:predictionTime "2024-01-20T10:00:00Z"^^xsd:dateTime ;
+    upw:targetTime "2024-01-21T00:00:00Z"^^xsd:dateTime ;
+    upw:predictedValue "125.5"^^xsd:float ;
+    upw:confidence "0.92"^^xsd:float ;
+    upw:interval "PT15M"^^xsd:duration ;
+    rdfs:comment "Predicted energy consumption for next 15-minute interval"@en .
+
+# -----------------------------------------------------------------------------
+# Sample Maintenance Activities
+# -----------------------------------------------------------------------------
+
+upw:MAINT-001 a upw:UVLampReplacement ;
+    upw:relatedEquipment upw:UV-001 ;
+    upw:scheduledDate "2024-02-01"^^xsd:date ;
+    upw:triggeredBy upw:UVLampDegradation ;
+    rdfs:comment "Scheduled UV lamp replacement based on degradation prediction"@en .
+
+upw:MAINT-002 a upw:MembraneReplacement ;
+    upw:relatedEquipment upw:RO-001 ;
+    upw:scheduledDate "2024-06-15"^^xsd:date ;
+    upw:triggeredBy upw:MembraneFouling ;
+    rdfs:comment "Preventive membrane replacement"@en .

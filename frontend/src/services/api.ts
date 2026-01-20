@@ -1,0 +1,219 @@
+import axios from 'axios';
+import type {
+  ApiResponse,
+  Equipment,
+  Sensor,
+  Observation,
+  Anomaly,
+  AnomalyResult,
+  EnergyPredictionResult,
+  MaintenanceSchedule,
+  MaintenanceRecommendation,
+  OntologyClass,
+  GraphData,
+  OntologyStats,
+  ProcessFlowData,
+  ProcessArea,
+} from '../types';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+
+const api = axios.create({
+  baseURL: `${API_BASE_URL}/api`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Equipment API
+export const equipmentApi = {
+  getAll: async (): Promise<ApiResponse<Equipment[]>> => {
+    const response = await api.get('/equipment');
+    return response.data;
+  },
+
+  getById: async (id: string): Promise<ApiResponse<Equipment>> => {
+    const response = await api.get(`/equipment/${id}`);
+    return response.data;
+  },
+
+  getSensors: async (id: string): Promise<ApiResponse<Sensor[]>> => {
+    const response = await api.get(`/equipment/${id}/sensors`);
+    return response.data;
+  },
+
+  getHealth: async (id: string): Promise<ApiResponse<{ healthScore: number; healthStatus: string }>> => {
+    const response = await api.get(`/equipment/${id}/health`);
+    return response.data;
+  },
+
+  updateHealth: async (id: string, healthScore: number, healthStatus: string): Promise<ApiResponse<void>> => {
+    const response = await api.put(`/equipment/${id}/health`, { healthScore, healthStatus });
+    return response.data;
+  },
+};
+
+// Sensor API
+export const sensorApi = {
+  getAll: async (): Promise<ApiResponse<Sensor[]>> => {
+    const response = await api.get('/sensors');
+    return response.data;
+  },
+
+  getById: async (id: string): Promise<ApiResponse<Sensor>> => {
+    const response = await api.get(`/sensors/${id}`);
+    return response.data;
+  },
+
+  getObservations: async (
+    id: string,
+    start?: string,
+    end?: string,
+    limit?: number
+  ): Promise<ApiResponse<Observation[]>> => {
+    const params = new URLSearchParams();
+    if (start) params.append('start', start);
+    if (end) params.append('end', end);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/sensors/${id}/observations?${params}`);
+    return response.data;
+  },
+};
+
+// Observation API
+export const observationApi = {
+  create: async (data: {
+    sensorId: string;
+    equipmentId: string;
+    value: number;
+    unit?: string;
+    timestamp?: string;
+  }): Promise<ApiResponse<{ uri: string }>> => {
+    const response = await api.post('/observations', data);
+    return response.data;
+  },
+
+  createBatch: async (observations: Array<{
+    sensorId: string;
+    equipmentId: string;
+    value: number;
+    unit?: string;
+    timestamp?: string;
+  }>): Promise<ApiResponse<{ created: number; failed: number }>> => {
+    const response = await api.post('/observations/batch', { observations });
+    return response.data;
+  },
+};
+
+// Anomaly API
+export const anomalyApi = {
+  detect: async (equipmentId: string): Promise<ApiResponse<AnomalyResult>> => {
+    const response = await api.post('/anomaly/detect', { equipmentId });
+    return response.data;
+  },
+
+  detectAll: async (): Promise<ApiResponse<{
+    total_equipment: number;
+    anomalies_found: number;
+    results: AnomalyResult[];
+  }>> => {
+    const response = await api.post('/anomaly/detect/all');
+    return response.data;
+  },
+
+  getHistory: async (
+    equipmentId?: string,
+    start?: string,
+    limit?: number
+  ): Promise<ApiResponse<Anomaly[]>> => {
+    const params = new URLSearchParams();
+    if (equipmentId) params.append('equipmentId', equipmentId);
+    if (start) params.append('start', start);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/anomaly/history?${params}`);
+    return response.data;
+  },
+};
+
+// Energy API
+export const energyApi = {
+  predict: async (targetDate?: string): Promise<ApiResponse<EnergyPredictionResult>> => {
+    const response = await api.post('/energy/predict', { targetDate });
+    return response.data;
+  },
+
+  getHistory: async (date?: string, limit?: number): Promise<ApiResponse<any[]>> => {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/energy/history?${params}`);
+    return response.data;
+  },
+
+  getAccuracy: async (date?: string): Promise<ApiResponse<{
+    date: string;
+    sampleCount: number;
+    metrics: { mae: number; rmse: number; mape: number };
+  }>> => {
+    const params = new URLSearchParams();
+    if (date) params.append('date', date);
+    const response = await api.get(`/energy/accuracy?${params}`);
+    return response.data;
+  },
+};
+
+// Maintenance API
+export const maintenanceApi = {
+  getSchedule: async (equipmentId?: string): Promise<ApiResponse<MaintenanceSchedule[]>> => {
+    const params = new URLSearchParams();
+    if (equipmentId) params.append('equipmentId', equipmentId);
+    const response = await api.get(`/maintenance/schedule?${params}`);
+    return response.data;
+  },
+
+  recommend: async (equipmentId: string): Promise<ApiResponse<MaintenanceRecommendation>> => {
+    const response = await api.post('/maintenance/recommend', { equipmentId });
+    return response.data;
+  },
+
+  recommendAll: async (): Promise<ApiResponse<{
+    recommendations: MaintenanceRecommendation[];
+    summary: { total: number; high_priority: number; medium_priority: number; low_priority: number };
+  }>> => {
+    const response = await api.post('/maintenance/recommend/all');
+    return response.data;
+  },
+};
+
+// Ontology API
+export const ontologyApi = {
+  getClasses: async (): Promise<ApiResponse<OntologyClass[]>> => {
+    const response = await api.get('/ontology/classes');
+    return response.data;
+  },
+
+  getGraph: async (center?: string, depth?: number): Promise<ApiResponse<GraphData>> => {
+    const params = new URLSearchParams();
+    if (center) params.append('center', center);
+    if (depth) params.append('depth', depth.toString());
+    const response = await api.get(`/ontology/graph?${params}`);
+    return response.data;
+  },
+
+  getStats: async (): Promise<ApiResponse<OntologyStats>> => {
+    const response = await api.get('/ontology/stats');
+    return response.data;
+  },
+
+  getProcessFlow: async (): Promise<ApiResponse<ProcessFlowData>> => {
+    const response = await api.get('/ontology/process-flow');
+    return response.data;
+  },
+
+  getAreas: async (): Promise<ApiResponse<ProcessArea[]>> => {
+    const response = await api.get('/ontology/areas');
+    return response.data;
+  },
+};
+
+export default api;

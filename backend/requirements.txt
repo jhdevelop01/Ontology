@@ -1,0 +1,22 @@
+# Flask and extensions
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Neo4j driver
+neo4j>=5.15.0
+
+# RDF/Ontology processing
+rdflib>=7.0.0
+
+# Data processing
+pandas>=2.2.0
+numpy>=2.0.0
+
+# Machine Learning (lightweight)
+scikit-learn>=1.5.0
+
+# Utilities
+python-dotenv>=1.0.0
+
+# Production
+gunicorn>=21.2.0
