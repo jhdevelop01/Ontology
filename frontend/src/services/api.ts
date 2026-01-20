@@ -214,6 +214,105 @@ export const ontologyApi = {
     const response = await api.get('/ontology/areas');
     return response.data;
   },
+
+  // Cypher query execution
+  executeCypher: async (query: string): Promise<ApiResponse<{
+    data: any[];
+    columns: string[];
+    count: number;
+  }>> => {
+    const response = await api.post('/ontology/cypher', { query });
+    return response.data;
+  },
+
+  // Class hierarchy
+  getHierarchy: async (): Promise<ApiResponse<{
+    flat: Array<{ name: string; count: number; parents: string[]; children: string[] }>;
+    tree: any[];
+  }>> => {
+    const response = await api.get('/ontology/hierarchy');
+    return response.data;
+  },
+
+  // Node search
+  searchNodes: async (query: string, nodeType?: string, limit?: number): Promise<ApiResponse<any[]>> => {
+    const params = new URLSearchParams();
+    if (query) params.append('q', query);
+    if (nodeType) params.append('type', nodeType);
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/ontology/search?${params}`);
+    return response.data;
+  },
+
+  // Relationship types
+  getRelationshipTypes: async (): Promise<ApiResponse<Array<{ type: string; count: number }>>> => {
+    const response = await api.get('/ontology/relationships');
+    return response.data;
+  },
+
+  // Node details
+  getNodeDetails: async (nodeId: string): Promise<ApiResponse<{
+    id: string;
+    labels: string[];
+    name: string;
+    properties: Record<string, any>;
+    outgoing: Array<{ type: string; target: string; targetLabels: string[]; targetName: string }>;
+    incoming: Array<{ type: string; source: string; sourceLabels: string[]; sourceName: string }>;
+  }>> => {
+    const response = await api.get(`/ontology/node/${encodeURIComponent(nodeId)}`);
+    return response.data;
+  },
+
+  // Path finding
+  findPath: async (sourceId: string, targetId: string, maxDepth?: number): Promise<ApiResponse<{
+    nodes: Array<{ id: string; labels: string[]; name: string }>;
+    relationships: Array<{ type: string; source: string; target: string }>;
+    length: number;
+  } | null>> => {
+    const params = new URLSearchParams();
+    params.append('source', sourceId);
+    params.append('target', targetId);
+    if (maxDepth) params.append('maxDepth', maxDepth.toString());
+    const response = await api.get(`/ontology/path?${params}`);
+    return response.data;
+  },
+
+  // Export ontology
+  exportOntology: async (format: 'json' | 'cypher' = 'json'): Promise<ApiResponse<any>> => {
+    const response = await api.get(`/ontology/export?format=${format}`);
+    return response.data;
+  },
+
+  // CRUD Operations
+  createNode: async (labels: string[], properties: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await api.post('/ontology/node', { labels, properties });
+    return response.data;
+  },
+
+  updateNode: async (nodeId: string, properties: Record<string, any>): Promise<ApiResponse<any>> => {
+    const response = await api.put(`/ontology/node/${encodeURIComponent(nodeId)}`, { properties });
+    return response.data;
+  },
+
+  deleteNode: async (nodeId: string): Promise<ApiResponse<void>> => {
+    const response = await api.delete(`/ontology/node/${encodeURIComponent(nodeId)}`);
+    return response.data;
+  },
+
+  createRelationship: async (
+    sourceId: string,
+    targetId: string,
+    type: string,
+    properties?: Record<string, any>
+  ): Promise<ApiResponse<any>> => {
+    const response = await api.post('/ontology/relationship', {
+      sourceId,
+      targetId,
+      type,
+      properties: properties || {},
+    });
+    return response.data;
+  },
 };
 
 export default api;
