@@ -315,4 +315,100 @@ export const ontologyApi = {
   },
 };
 
+// Reasoning API
+export const reasoningApi = {
+  // Get all inference rules
+  getRules: async (): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+  }>>> => {
+    const response = await api.get('/ontology/reasoning/rules');
+    return response.data;
+  },
+
+  // Get a specific rule by ID
+  getRule: async (ruleId: string): Promise<ApiResponse<{
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+  }>> => {
+    const response = await api.get(`/ontology/reasoning/rules/${ruleId}`);
+    return response.data;
+  },
+
+  // Check what a rule would infer without applying it
+  checkRule: async (ruleId: string): Promise<ApiResponse<{
+    rule: { id: string; name: string; description: string };
+    candidates: any[];
+    count: number;
+  }>> => {
+    const response = await api.post(`/ontology/reasoning/rules/${ruleId}/check`);
+    return response.data;
+  },
+
+  // Apply a specific rule
+  applyRule: async (ruleId: string): Promise<ApiResponse<{
+    rule: string;
+    message: string;
+    inferred: any[];
+    count: number;
+  }>> => {
+    const response = await api.post(`/ontology/reasoning/rules/${ruleId}/apply`);
+    return response.data;
+  },
+
+  // Run all inference rules
+  runAll: async (): Promise<ApiResponse<{
+    timestamp: string;
+    totalInferred: number;
+    results: Array<{
+      ruleId: string;
+      ruleName: string;
+      status: string;
+      count: number;
+      message: string;
+    }>;
+  }>> => {
+    const response = await api.post('/ontology/reasoning/run');
+    return response.data;
+  },
+
+  // Get all inferred facts
+  getInferred: async (limit?: number): Promise<ApiResponse<{
+    nodes: any[];
+    relationships: any[];
+    nodeCount: number;
+    relationshipCount: number;
+  }>> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/ontology/reasoning/inferred?${params}`);
+    return response.data;
+  },
+
+  // Clear all inferred facts
+  clearInferred: async (): Promise<ApiResponse<{
+    message: string;
+    deletedNodes: number;
+    deletedRelationships: number;
+  }>> => {
+    const response = await api.delete('/ontology/reasoning/inferred');
+    return response.data;
+  },
+
+  // Get inference statistics
+  getStats: async (): Promise<ApiResponse<{
+    totalInferredNodes: number;
+    totalInferredRelationships: number;
+    nodesByType: Array<{ label: string; count: number }>;
+    relationshipsByType: Array<{ type: string; count: number }>;
+  }>> => {
+    const response = await api.get('/ontology/reasoning/stats');
+    return response.data;
+  },
+};
+
 export default api;

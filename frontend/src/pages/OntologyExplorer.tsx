@@ -1,7 +1,29 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { ontologyApi } from '../services/api';
+import { ontologyApi, reasoningApi } from '../services/api';
 import type { OntologyClass } from '../types';
+
+// Reasoning types
+interface InferenceRule {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+}
+
+interface InferredFact {
+  nodes: any[];
+  relationships: any[];
+  nodeCount: number;
+  relationshipCount: number;
+}
+
+interface ReasoningStats {
+  totalInferredNodes: number;
+  totalInferredRelationships: number;
+  nodesByType: Array<{ label: string; count: number }>;
+  relationshipsByType: Array<{ type: string; count: number }>;
+}
 
 // Node colors by type
 const NODE_COLORS: Record<string, string> = {
@@ -55,7 +77,7 @@ interface NodeDetails {
   incoming: Array<{ type: string; source: string; sourceLabels: string[]; sourceName: string }>;
 }
 
-type ActiveTab = 'graph' | 'query' | 'hierarchy';
+type ActiveTab = 'graph' | 'query' | 'hierarchy' | 'reasoning';
 
 const OntologyExplorer: React.FC = () => {
   // Core state
@@ -102,6 +124,16 @@ const OntologyExplorer: React.FC = () => {
   const [pathTarget, setPathTarget] = useState<string>('');
   const [pathResult, setPathResult] = useState<any>(null);
   const [isFindingPath, setIsFindingPath] = useState(false);
+
+  // Reasoning/Inference
+  const [inferenceRules, setInferenceRules] = useState<InferenceRule[]>([]);
+  const [inferredFacts, setInferredFacts] = useState<InferredFact | null>(null);
+  const [reasoningStats, setReasoningStats] = useState<ReasoningStats | null>(null);
+  const [selectedRule, setSelectedRule] = useState<string | null>(null);
+  const [ruleCheckResult, setRuleCheckResult] = useState<any>(null);
+  const [isRunningReasoning, setIsRunningReasoning] = useState(false);
+  const [reasoningMessage, setReasoningMessage] = useState<string | null>(null);
+  const [runAllResult, setRunAllResult] = useState<any>(null);
 
   // Refs
   const graphRef = useRef<any>();
@@ -557,6 +589,129 @@ const OntologyExplorer: React.FC = () => {
     }
   };
 
+  // Fetch reasoning data
+  const fetchReasoningData = useCallback(async () => {
+    try {
+      const [rulesRes, statsRes, inferredRes] = await Promise.all([
+        reasoningApi.getRules(),
+        reasoningApi.getStats(),
+        reasoningApi.getInferred(100),
+      ]);
+
+      if (rulesRes.status === 'success' && rulesRes.data) {
+        setInferenceRules(rulesRes.data);
+      }
+      if (statsRes.status === 'success' && statsRes.data) {
+        setReasoningStats(statsRes.data);
+      }
+      if (inferredRes.status === 'success' && inferredRes.data) {
+        setInferredFacts(inferredRes.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch reasoning data:', err);
+    }
+  }, []);
+
+  // Load reasoning data when tab is active
+  useEffect(() => {
+    if (activeTab === 'reasoning') {
+      fetchReasoningData();
+    }
+  }, [activeTab, fetchReasoningData]);
+
+  // Check what a rule would infer
+  const handleCheckRule = async (ruleId: string) => {
+    setSelectedRule(ruleId);
+    setRuleCheckResult(null);
+    setReasoningMessage(null);
+
+    try {
+      const res = await reasoningApi.checkRule(ruleId);
+      if (res.status === 'success' && res.data) {
+        setRuleCheckResult(res.data);
+      }
+    } catch (err) {
+      console.error('Check rule error:', err);
+      setReasoningMessage('Failed to check rule');
+    }
+  };
+
+  // Apply a specific rule
+  const handleApplyRule = async (ruleId: string) => {
+    setIsRunningReasoning(true);
+    setReasoningMessage(null);
+
+    try {
+      const res = await reasoningApi.applyRule(ruleId);
+      if (res.status === 'success' && res.data) {
+        setReasoningMessage(`Applied rule: ${res.data.message}`);
+        fetchReasoningData(); // Refresh stats
+      }
+    } catch (err) {
+      console.error('Apply rule error:', err);
+      setReasoningMessage('Failed to apply rule');
+    } finally {
+      setIsRunningReasoning(false);
+    }
+  };
+
+  // Run all inference rules
+  const handleRunAllRules = async () => {
+    setIsRunningReasoning(true);
+    setReasoningMessage(null);
+    setRunAllResult(null);
+
+    try {
+      const res = await reasoningApi.runAll();
+      if (res.status === 'success' && res.data) {
+        setRunAllResult(res.data);
+        setReasoningMessage(`Completed: ${res.data.totalInferred} new inferences`);
+        fetchReasoningData(); // Refresh stats
+      }
+    } catch (err) {
+      console.error('Run all rules error:', err);
+      setReasoningMessage('Failed to run inference rules');
+    } finally {
+      setIsRunningReasoning(false);
+    }
+  };
+
+  // Clear all inferred facts
+  const handleClearInferred = async () => {
+    if (!window.confirm('Are you sure you want to clear all inferred facts?')) {
+      return;
+    }
+
+    setIsRunningReasoning(true);
+    setReasoningMessage(null);
+
+    try {
+      const res = await reasoningApi.clearInferred();
+      if (res.status === 'success' && res.data) {
+        setReasoningMessage(res.data.message);
+        setInferredFacts(null);
+        fetchReasoningData(); // Refresh stats
+      }
+    } catch (err) {
+      console.error('Clear inferred error:', err);
+      setReasoningMessage('Failed to clear inferred facts');
+    } finally {
+      setIsRunningReasoning(false);
+    }
+  };
+
+  // Get category color for rules
+  const getCategoryColor = (category: string) => {
+    const colors: Record<string, string> = {
+      maintenance: '#e67e22',
+      anomaly: '#e74c3c',
+      prediction: '#9b59b6',
+      structure: '#3498db',
+      analysis: '#2ecc71',
+    };
+    return colors[category] || '#95a5a6';
+  };
+
   if (loading) {
     return (
       <div className="loading">
@@ -592,6 +747,12 @@ const OntologyExplorer: React.FC = () => {
           onClick={() => setActiveTab('hierarchy')}
         >
           Class Hierarchy
+        </button>
+        <button
+          className={`btn ${activeTab === 'reasoning' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('reasoning')}
+        >
+          Reasoning
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
           <button className="btn btn-secondary" onClick={() => handleExport('json')}>
@@ -1137,9 +1298,326 @@ const OntologyExplorer: React.FC = () => {
                   }}
                 >
                   <span style={{ fontWeight: 500 }}>{cls.name}</span>
-                  <span style={{ marginLeft: '0.5rem', color: '#718096' }}>({cls.count || 0})</span>
+                  <span style={{ marginLeft: '0.5rem', color: '#718096' }}>({(cls as any).count || 0})</span>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reasoning Tab */}
+      {activeTab === 'reasoning' && (
+        <div>
+          {/* Reasoning Stats */}
+          <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
+            <div className="stat-card">
+              <div className="stat-value">{inferenceRules.length}</div>
+              <div className="stat-label">Inference Rules</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{reasoningStats?.totalInferredNodes || 0}</div>
+              <div className="stat-label">Inferred Nodes</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">{reasoningStats?.totalInferredRelationships || 0}</div>
+              <div className="stat-label">Inferred Relationships</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-value">
+                {(reasoningStats?.totalInferredNodes || 0) + (reasoningStats?.totalInferredRelationships || 0)}
+              </div>
+              <div className="stat-label">Total Inferred</div>
+            </div>
+          </div>
+
+          {/* Message Display */}
+          {reasoningMessage && (
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                marginBottom: '1rem',
+                backgroundColor: reasoningMessage.includes('Failed') ? '#fed7d7' : '#c6f6d5',
+                color: reasoningMessage.includes('Failed') ? '#c53030' : '#276749',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+              }}
+            >
+              {reasoningMessage}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
+            {/* Inference Rules */}
+            <div className="card">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h2 className="card-title" style={{ marginBottom: 0 }}>Inference Rules</h2>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={handleRunAllRules}
+                    disabled={isRunningReasoning}
+                  >
+                    {isRunningReasoning ? 'Running...' : 'Run All Rules'}
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    onClick={handleClearInferred}
+                    disabled={isRunningReasoning}
+                    style={{ backgroundColor: '#e53e3e', color: 'white' }}
+                  >
+                    Clear Inferred
+                  </button>
+                </div>
+              </div>
+
+              <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
+                Rule-based reasoning to infer new knowledge from existing data.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {inferenceRules.map((rule) => (
+                  <div
+                    key={rule.id}
+                    style={{
+                      padding: '1rem',
+                      backgroundColor: selectedRule === rule.id ? '#ebf8ff' : '#f7fafc',
+                      borderRadius: '8px',
+                      border: selectedRule === rule.id ? '2px solid #3182ce' : '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <span style={{ fontWeight: 600 }}>{rule.name}</span>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: '4px',
+                              backgroundColor: getCategoryColor(rule.category),
+                              color: 'white',
+                              fontSize: '0.7rem',
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {rule.category}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.875rem', color: '#718096' }}>{rule.description}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleCheckRule(rule.id)}
+                          disabled={isRunningReasoning}
+                        >
+                          Check
+                        </button>
+                        <button
+                          className="btn btn-sm btn-primary"
+                          onClick={() => handleApplyRule(rule.id)}
+                          disabled={isRunningReasoning}
+                        >
+                          Apply
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rule Check Result */}
+                    {selectedRule === rule.id && ruleCheckResult && (
+                      <div
+                        style={{
+                          marginTop: '0.75rem',
+                          padding: '0.75rem',
+                          backgroundColor: 'white',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        <div style={{ fontWeight: 500, marginBottom: '0.5rem' }}>
+                          Candidates: {ruleCheckResult.count || 0}
+                        </div>
+                        {ruleCheckResult.candidates && ruleCheckResult.candidates.length > 0 ? (
+                          <div style={{ maxHeight: '150px', overflow: 'auto' }}>
+                            {ruleCheckResult.candidates.slice(0, 5).map((candidate: any, i: number) => (
+                              <div
+                                key={i}
+                                style={{
+                                  padding: '0.25rem 0',
+                                  borderBottom: '1px solid #e2e8f0',
+                                  fontSize: '0.75rem',
+                                }}
+                              >
+                                {JSON.stringify(candidate).substring(0, 100)}...
+                              </div>
+                            ))}
+                            {ruleCheckResult.candidates.length > 5 && (
+                              <div style={{ color: '#718096', marginTop: '0.25rem' }}>
+                                ...and {ruleCheckResult.candidates.length - 5} more
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <div style={{ color: '#718096' }}>No candidates found</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Run All Results */}
+              {runAllResult && (
+                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f7fafc', borderRadius: '8px' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+                    Inference Results ({runAllResult.timestamp})
+                  </div>
+                  <div style={{ fontSize: '0.875rem' }}>
+                    Total Inferred: <strong>{runAllResult.totalInferred}</strong>
+                  </div>
+                  <div style={{ marginTop: '0.5rem', maxHeight: '150px', overflow: 'auto' }}>
+                    {runAllResult.results?.map((result: any, i: number) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          padding: '0.25rem 0',
+                          fontSize: '0.75rem',
+                          borderBottom: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <span>{result.ruleName}</span>
+                        <span style={{ color: result.count > 0 ? '#276749' : '#718096' }}>
+                          +{result.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Inferred Facts */}
+            <div className="card">
+              <h2 className="card-title">Inferred Knowledge</h2>
+              <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
+                Facts inferred by the reasoning engine.
+              </p>
+
+              {/* Inferred Nodes */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                  Inferred Nodes ({inferredFacts?.nodeCount || 0})
+                </h3>
+                {inferredFacts && inferredFacts.nodes.length > 0 ? (
+                  <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                    {inferredFacts.nodes.map((node: any, i: number) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: '0.5rem',
+                          marginBottom: '0.5rem',
+                          backgroundColor: '#f7fafc',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          {node.labels?.map((label: string) => (
+                            <span
+                              key={label}
+                              style={{
+                                padding: '2px 6px',
+                                backgroundColor: label === 'Inferred' ? '#9b59b6' : '#3498db',
+                                color: 'white',
+                                borderRadius: '4px',
+                                fontSize: '0.7rem',
+                              }}
+                            >
+                              {label}
+                            </span>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#718096' }}>
+                          {node.properties?.reason || node.properties?.description || JSON.stringify(node.properties).substring(0, 80)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>No inferred nodes</div>
+                )}
+              </div>
+
+              {/* Inferred Relationships */}
+              <div>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                  Inferred Relationships ({inferredFacts?.relationshipCount || 0})
+                </h3>
+                {inferredFacts && inferredFacts.relationships.length > 0 ? (
+                  <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                    {inferredFacts.relationships.map((rel: any, i: number) => (
+                      <div
+                        key={i}
+                        style={{
+                          padding: '0.5rem',
+                          marginBottom: '0.5rem',
+                          backgroundColor: '#f7fafc',
+                          borderRadius: '4px',
+                          fontSize: '0.875rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <span style={{ fontWeight: 500 }}>{rel.sourceName || 'Node'}</span>
+                        <span
+                          style={{
+                            padding: '2px 6px',
+                            backgroundColor: '#e67e22',
+                            color: 'white',
+                            borderRadius: '4px',
+                            fontSize: '0.7rem',
+                          }}
+                        >
+                          {rel.type}
+                        </span>
+                        <span style={{ fontWeight: 500 }}>{rel.targetName || 'Node'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>No inferred relationships</div>
+                )}
+              </div>
+
+              {/* Stats by Type */}
+              {reasoningStats && (reasoningStats.nodesByType.length > 0 || reasoningStats.relationshipsByType.length > 0) && (
+                <div style={{ marginTop: '1.5rem' }}>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Statistics by Type</h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>Nodes</div>
+                      {reasoningStats.nodesByType.map((item, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                          <span>{item.label}</span>
+                          <span style={{ fontWeight: 500 }}>{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>Relationships</div>
+                      {reasoningStats.relationshipsByType.map((item, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
+                          <span>{item.type}</span>
+                          <span style={{ fontWeight: 500 }}>{item.count}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

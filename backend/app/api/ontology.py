@@ -3,6 +3,7 @@ Ontology/Graph API endpoints
 """
 from flask import Blueprint, jsonify, request, Response
 from ..services.neo4j_service import Neo4jService
+from ..services.reasoning_service import ReasoningService
 from neo4j import GraphDatabase
 from flask import current_app
 import json
@@ -641,5 +642,139 @@ def create_relationship():
             'data': rel_data,
             'message': 'Relationship created successfully'
         }), 201
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============== Reasoning/Inference API ==============
+
+@bp.route('/reasoning/rules', methods=['GET'])
+def get_reasoning_rules():
+    """Get all available inference rules"""
+    try:
+        rules = ReasoningService.get_rules()
+        return jsonify({
+            'status': 'success',
+            'data': rules,
+            'count': len(rules)
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/rules/<rule_id>', methods=['GET'])
+def get_reasoning_rule(rule_id):
+    """Get a specific inference rule by ID"""
+    try:
+        rule = ReasoningService.get_rule_by_id(rule_id)
+        if not rule:
+            return jsonify({'status': 'error', 'message': f'Rule {rule_id} not found'}), 404
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'id': rule['id'],
+                'name': rule['name'],
+                'description': rule['description'],
+                'category': rule['category']
+            }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/rules/<rule_id>/check', methods=['POST'])
+def check_reasoning_rule(rule_id):
+    """Check what a rule would infer without applying it"""
+    try:
+        result = ReasoningService.check_rule(rule_id)
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/rules/<rule_id>/apply', methods=['POST'])
+def apply_reasoning_rule(rule_id):
+    """Apply a specific inference rule"""
+    try:
+        result = ReasoningService.apply_rule(rule_id)
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/run', methods=['POST'])
+def run_all_reasoning():
+    """Run all inference rules"""
+    try:
+        result = ReasoningService.run_all_rules()
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/inferred', methods=['GET'])
+def get_inferred_facts():
+    """Get all inferred facts (nodes and relationships)"""
+    try:
+        limit = request.args.get('limit', 100, type=int)
+        result = ReasoningService.get_inferred_facts(limit=limit)
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/inferred', methods=['DELETE'])
+def clear_inferred_facts():
+    """Clear all inferred facts"""
+    try:
+        result = ReasoningService.clear_inferred_facts()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/stats', methods=['GET'])
+def get_inference_statistics():
+    """Get statistics about inferred knowledge"""
+    try:
+        result = ReasoningService.get_inference_statistics()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
