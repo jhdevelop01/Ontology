@@ -4,6 +4,7 @@ Ontology/Graph API endpoints
 from flask import Blueprint, jsonify, request, Response
 from ..services.neo4j_service import Neo4jService
 from ..services.reasoning_service import ReasoningService
+from ..services.test_data_service import TestDataService
 from neo4j import GraphDatabase
 from flask import current_app
 import json
@@ -776,5 +777,110 @@ def get_inference_statistics():
             'status': 'success',
             'data': result
         })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/reasoning/rules/<rule_id>/run-with-trace', methods=['POST'])
+def run_rule_with_trace(rule_id):
+    """
+    추론 과정을 추적하면서 규칙을 실행합니다.
+    각 단계에서 어떤 데이터가 사용되었고, 왜 추론이 이루어졌는지 상세하게 반환합니다.
+    """
+    try:
+        result = ReasoningService.run_rule_with_trace(rule_id)
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify({
+            'status': 'success',
+            'data': result.get('trace')
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== Test Data API =====
+
+@bp.route('/test-data/scenarios', methods=['GET'])
+def get_test_scenarios():
+    """테스트 시나리오 목록 조회"""
+    try:
+        scenarios = TestDataService.get_scenarios()
+        return jsonify({
+            'status': 'success',
+            'data': scenarios
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/test-data/status', methods=['GET'])
+def get_test_data_status():
+    """테스트 데이터 현재 상태 조회"""
+    try:
+        result = TestDataService.get_scenario_status()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/test-data/load', methods=['POST'])
+def load_all_test_data():
+    """모든 테스트 시나리오 데이터 로드"""
+    try:
+        result = TestDataService.load_all_scenarios()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/test-data/load/<scenario_id>', methods=['POST'])
+def load_test_scenario(scenario_id):
+    """특정 시나리오 데이터 로드"""
+    try:
+        result = TestDataService.load_scenario(scenario_id)
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/test-data/reset', methods=['POST'])
+def reset_test_data():
+    """테스트 데이터 초기화"""
+    try:
+        result = TestDataService.reset_test_data()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/test-data/clear-inferred', methods=['POST'])
+def clear_inferred_data():
+    """추론된 데이터만 삭제"""
+    try:
+        result = TestDataService.clear_inferred_data()
+
+        if result.get('status') == 'error':
+            return jsonify(result), 400
+
+        return jsonify(result)
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

@@ -409,6 +409,118 @@ export const reasoningApi = {
     const response = await api.get('/ontology/reasoning/stats');
     return response.data;
   },
+
+  // Run rule with trace - 추론 과정 추적
+  runRuleWithTrace: async (ruleId: string): Promise<ApiResponse<{
+    id: string;
+    ruleId: string;
+    ruleName: string;
+    ruleDescription: string;
+    startedAt: string;
+    completedAt: string | null;
+    result: 'SUCCESS' | 'NO_MATCH' | 'ERROR' | 'PENDING';
+    steps: Array<{
+      stepNumber: number;
+      type: 'MATCH' | 'FILTER' | 'CHECK' | 'INFERENCE' | 'RESULT';
+      description: string;
+      descriptionDetail?: string;
+      query?: string;
+      resultSummary?: string;
+      dataCount: number;
+      data: any[];
+      timestamp: string;
+    }>;
+    evidence: Array<{
+      id: string;
+      type: 'NODE' | 'RELATIONSHIP' | 'PROPERTY';
+      nodeId: string;
+      label: string;
+      propertyName: string;
+      propertyValue: any;
+      description: string;
+    }>;
+    inferredCount: number;
+    inferredItems: any[];
+    summary: string;
+  }>> => {
+    const response = await api.post(`/ontology/reasoning/rules/${ruleId}/run-with-trace`);
+    return response.data;
+  },
+};
+
+// Test Data API
+export const testDataApi = {
+  // 시나리오 목록 조회
+  getScenarios: async (): Promise<ApiResponse<Array<{
+    id: string;
+    name: string;
+    description: string;
+    targetRule: string;
+    expectedResult: string;
+  }>>> => {
+    const response = await api.get('/ontology/test-data/scenarios');
+    return response.data;
+  },
+
+  // 테스트 데이터 상태 조회
+  getStatus: async (): Promise<ApiResponse<{
+    scenarios: Array<{ id: string; name: string; loaded: boolean }>;
+    dataStatus: {
+      lowHealthEquipment: number;
+      anomalyObservations: number;
+      trendingObservations: number;
+      testEquipment: number;
+      flowSensors: number;
+      inferredNodes: number;
+      inferredRelationships: number;
+    };
+  }>> => {
+    const response = await api.get('/ontology/test-data/status');
+    return response.data;
+  },
+
+  // 모든 시나리오 로드
+  loadAll: async (): Promise<ApiResponse<{
+    message: string;
+    results: Array<{
+      scenario: string;
+      name: string;
+      status: string;
+      message: string;
+      data: any;
+    }>;
+  }>> => {
+    const response = await api.post('/ontology/test-data/load');
+    return response.data;
+  },
+
+  // 특정 시나리오 로드
+  loadScenario: async (scenarioId: string): Promise<ApiResponse<{
+    scenario: string;
+    name: string;
+    status: string;
+    message: string;
+    data: any;
+  }>> => {
+    const response = await api.post(`/ontology/test-data/load/${scenarioId}`);
+    return response.data;
+  },
+
+  // 테스트 데이터 초기화
+  reset: async (): Promise<ApiResponse<{ message: string }>> => {
+    const response = await api.post('/ontology/test-data/reset');
+    return response.data;
+  },
+
+  // 추론 결과만 삭제
+  clearInferred: async (): Promise<ApiResponse<{
+    message: string;
+    deletedNodes: number;
+    deletedRelationships: number;
+  }>> => {
+    const response = await api.post('/ontology/test-data/clear-inferred');
+    return response.data;
+  },
 };
 
 export default api;

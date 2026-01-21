@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { ontologyApi, reasoningApi } from '../services/api';
+import { ontologyApi, reasoningApi, testDataApi } from '../services/api';
 import type { OntologyClass } from '../types';
 
 // Reasoning types
@@ -9,6 +9,10 @@ interface InferenceRule {
   name: string;
   description: string;
   category: string;
+  condition?: string;
+  inference?: string;
+  inputData?: string[];
+  outputData?: string[];
 }
 
 interface InferredFact {
@@ -23,6 +27,67 @@ interface ReasoningStats {
   totalInferredRelationships: number;
   nodesByType: Array<{ label: string; count: number }>;
   relationshipsByType: Array<{ type: string; count: number }>;
+}
+
+// 추론 과정 추적 타입
+interface ReasoningStep {
+  stepNumber: number;
+  type: 'MATCH' | 'FILTER' | 'CHECK' | 'INFERENCE' | 'RESULT';
+  description: string;
+  descriptionDetail?: string;
+  query?: string;
+  resultSummary?: string;
+  dataCount: number;
+  data: any[];
+  timestamp: string;
+}
+
+interface Evidence {
+  id: string;
+  type: 'NODE' | 'RELATIONSHIP' | 'PROPERTY';
+  nodeId: string;
+  label: string;
+  propertyName: string;
+  propertyValue: any;
+  description: string;
+}
+
+interface ReasoningTrace {
+  id: string;
+  ruleId: string;
+  ruleName: string;
+  ruleDescription: string;
+  startedAt: string;
+  completedAt: string | null;
+  result: 'SUCCESS' | 'NO_MATCH' | 'ERROR' | 'PENDING';
+  steps: ReasoningStep[];
+  evidence: Evidence[];
+  inferredCount: number;
+  inferredItems: any[];
+  summary: string;
+}
+
+// 테스트 데이터 타입
+interface TestScenario {
+  id: string;
+  name: string;
+  description: string;
+  targetRule: string;
+  expectedResult: string;
+  loaded?: boolean;
+}
+
+interface TestDataStatus {
+  scenarios: Array<{ id: string; name: string; loaded: boolean }>;
+  dataStatus: {
+    lowHealthEquipment: number;
+    anomalyObservations: number;
+    trendingObservations: number;
+    testEquipment: number;
+    flowSensors: number;
+    inferredNodes: number;
+    inferredRelationships: number;
+  };
 }
 
 // Node colors by type
@@ -130,10 +195,21 @@ const OntologyExplorer: React.FC = () => {
   const [inferredFacts, setInferredFacts] = useState<InferredFact | null>(null);
   const [reasoningStats, setReasoningStats] = useState<ReasoningStats | null>(null);
   const [selectedRule, setSelectedRule] = useState<string | null>(null);
+  const [expandedRule, setExpandedRule] = useState<string | null>(null);
   const [ruleCheckResult, setRuleCheckResult] = useState<any>(null);
   const [isRunningReasoning, setIsRunningReasoning] = useState(false);
   const [reasoningMessage, setReasoningMessage] = useState<string | null>(null);
   const [runAllResult, setRunAllResult] = useState<any>(null);
+  const [reasoningTrace, setReasoningTrace] = useState<ReasoningTrace | null>(null);
+  const [isLoadingTrace, setIsLoadingTrace] = useState(false);
+  const [showTraceModal, setShowTraceModal] = useState(false);
+  const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set());
+
+  // Test Data
+  const [testScenarios, setTestScenarios] = useState<TestScenario[]>([]);
+  const [testDataStatus, setTestDataStatus] = useState<TestDataStatus | null>(null);
+  const [isLoadingTestData, setIsLoadingTestData] = useState(false);
+  const [testDataMessage, setTestDataMessage] = useState<string | null>(null);
 
   // Refs
   const graphRef = useRef<any>();
@@ -700,9 +776,200 @@ const OntologyExplorer: React.FC = () => {
     }
   };
 
+  // Run rule with trace - 추론 과정 추적 실행
+  const handleRunWithTrace = async (ruleId: string) => {
+    setIsLoadingTrace(true);
+    setReasoningTrace(null);
+    setExpandedSteps(new Set());
+
+    try {
+      const res = await reasoningApi.runRuleWithTrace(ruleId);
+      if (res.status === 'success' && res.data) {
+        setReasoningTrace(res.data);
+        setShowTraceModal(true);
+        fetchReasoningData(); // Refresh stats
+      }
+    } catch (err) {
+      console.error('Run with trace error:', err);
+      setReasoningMessage('추론 과정 추적 실패');
+    } finally {
+      setIsLoadingTrace(false);
+    }
+  };
+
+  // Toggle step expansion
+  const toggleStepExpansion = (stepNumber: number) => {
+    setExpandedSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(stepNumber)) {
+        next.delete(stepNumber);
+      } else {
+        next.add(stepNumber);
+      }
+      return next;
+    });
+  };
+
+  // Fetch test data scenarios and status
+  const fetchTestDataStatus = useCallback(async () => {
+    try {
+      const [scenariosRes, statusRes] = await Promise.all([
+        testDataApi.getScenarios(),
+        testDataApi.getStatus(),
+      ]);
+
+      if (scenariosRes.status === 'success' && scenariosRes.data) {
+        setTestScenarios(scenariosRes.data);
+      }
+      if (statusRes.status === 'success' && statusRes.data) {
+        setTestDataStatus(statusRes.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch test data status:', err);
+    }
+  }, []);
+
+  // Load test data when reasoning tab is active
+  useEffect(() => {
+    if (activeTab === 'reasoning') {
+      fetchTestDataStatus();
+    }
+  }, [activeTab, fetchTestDataStatus]);
+
+  // Load all test scenarios
+  const handleLoadAllTestData = async () => {
+    setIsLoadingTestData(true);
+    setTestDataMessage(null);
+
+    try {
+      const res = await testDataApi.loadAll();
+      if (res.status === 'success' && res.data) {
+        setTestDataMessage(`테스트 데이터 로드 완료: ${res.data.results.length}개 시나리오`);
+        fetchTestDataStatus();
+        fetchReasoningData();
+      }
+    } catch (err) {
+      console.error('Load test data error:', err);
+      setTestDataMessage('테스트 데이터 로드 실패');
+    } finally {
+      setIsLoadingTestData(false);
+    }
+  };
+
+  // Load specific scenario
+  const handleLoadScenario = async (scenarioId: string) => {
+    setIsLoadingTestData(true);
+    setTestDataMessage(null);
+
+    try {
+      const res = await testDataApi.loadScenario(scenarioId);
+      if (res.status === 'success' && res.data) {
+        setTestDataMessage(`${res.data.name} 로드 완료`);
+        fetchTestDataStatus();
+        fetchReasoningData();
+      }
+    } catch (err) {
+      console.error('Load scenario error:', err);
+      setTestDataMessage('시나리오 로드 실패');
+    } finally {
+      setIsLoadingTestData(false);
+    }
+  };
+
+  // Reset test data to original state
+  const handleResetTestData = async () => {
+    if (!window.confirm('테스트 데이터를 초기화하시겠습니까? 이 작업은 모든 테스트 데이터를 원래 상태로 복원합니다.')) {
+      return;
+    }
+
+    setIsLoadingTestData(true);
+    setTestDataMessage(null);
+
+    try {
+      const res = await testDataApi.reset();
+      if (res.status === 'success') {
+        setTestDataMessage('테스트 데이터가 초기화되었습니다');
+        fetchTestDataStatus();
+        fetchReasoningData();
+      }
+    } catch (err) {
+      console.error('Reset test data error:', err);
+      setTestDataMessage('테스트 데이터 초기화 실패');
+    } finally {
+      setIsLoadingTestData(false);
+    }
+  };
+
+  // Clear only inferred data
+  const handleClearTestInferred = async () => {
+    if (!window.confirm('추론 결과만 삭제하시겠습니까?')) {
+      return;
+    }
+
+    setIsLoadingTestData(true);
+    setTestDataMessage(null);
+
+    try {
+      const res = await testDataApi.clearInferred();
+      if (res.status === 'success' && res.data) {
+        setTestDataMessage(`추론 결과 삭제: 노드 ${res.data.deletedNodes}개, 관계 ${res.data.deletedRelationships}개`);
+        fetchTestDataStatus();
+        fetchReasoningData();
+      }
+    } catch (err) {
+      console.error('Clear inferred error:', err);
+      setTestDataMessage('추론 결과 삭제 실패');
+    } finally {
+      setIsLoadingTestData(false);
+    }
+  };
+
+  // Get scenario status indicator
+  const getScenarioStatus = (scenarioId: string): boolean => {
+    return testDataStatus?.scenarios?.find(s => s.id === scenarioId)?.loaded ?? false;
+  };
+
+  // Get step type icon and color
+  const getStepTypeStyle = (type: string) => {
+    switch (type) {
+      case 'MATCH':
+        return { icon: '🔍', color: '#3498db', bgColor: '#ebf8ff' };
+      case 'FILTER':
+        return { icon: '🔎', color: '#9b59b6', bgColor: '#faf5ff' };
+      case 'CHECK':
+        return { icon: '✓', color: '#27ae60', bgColor: '#f0fff4' };
+      case 'INFERENCE':
+        return { icon: '💡', color: '#e67e22', bgColor: '#fffaf0' };
+      case 'RESULT':
+        return { icon: '📊', color: '#718096', bgColor: '#f7fafc' };
+      default:
+        return { icon: '•', color: '#718096', bgColor: '#f7fafc' };
+    }
+  };
+
+  // Get result badge style
+  const getResultBadgeStyle = (result: string) => {
+    switch (result) {
+      case 'SUCCESS':
+        return { color: '#276749', bgColor: '#c6f6d5', text: '성공' };
+      case 'NO_MATCH':
+        return { color: '#744210', bgColor: '#fefcbf', text: '매칭 없음' };
+      case 'ERROR':
+        return { color: '#c53030', bgColor: '#fed7d7', text: '오류' };
+      default:
+        return { color: '#718096', bgColor: '#e2e8f0', text: '진행 중' };
+    }
+  };
+
   // Get category color for rules
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
+      '유지보수': '#e67e22',
+      '이상탐지': '#e74c3c',
+      '예측': '#9b59b6',
+      '구조': '#3498db',
+      '분석': '#2ecc71',
+      // English fallbacks
       maintenance: '#e67e22',
       anomaly: '#e74c3c',
       prediction: '#9b59b6',
@@ -752,7 +1019,7 @@ const OntologyExplorer: React.FC = () => {
           className={`btn ${activeTab === 'reasoning' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('reasoning')}
         >
-          Reasoning
+          추론
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
           <button className="btn btn-secondary" onClick={() => handleExport('json')}>
@@ -1309,25 +1576,150 @@ const OntologyExplorer: React.FC = () => {
       {/* Reasoning Tab */}
       {activeTab === 'reasoning' && (
         <div>
+          {/* Test Data Panel */}
+          <div className="card" style={{ marginBottom: '1.5rem', backgroundColor: '#fefcbf', border: '1px solid #f6e05e' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h2 className="card-title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>🧪</span> 테스트 시나리오
+              </h2>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleLoadAllTestData}
+                  disabled={isLoadingTestData}
+                >
+                  {isLoadingTestData ? '로딩 중...' : '전체 시나리오 로드'}
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  onClick={handleResetTestData}
+                  disabled={isLoadingTestData}
+                >
+                  데이터 초기화
+                </button>
+                <button
+                  className="btn"
+                  onClick={handleClearTestInferred}
+                  disabled={isLoadingTestData}
+                  style={{ backgroundColor: '#ed8936', color: 'white' }}
+                >
+                  추론 결과만 삭제
+                </button>
+              </div>
+            </div>
+
+            {/* Test Data Message */}
+            {testDataMessage && (
+              <div
+                style={{
+                  padding: '0.5rem 0.75rem',
+                  marginBottom: '1rem',
+                  backgroundColor: testDataMessage.includes('실패') ? '#fed7d7' : '#c6f6d5',
+                  color: testDataMessage.includes('실패') ? '#c53030' : '#276749',
+                  borderRadius: '4px',
+                  fontSize: '0.875rem',
+                }}
+              >
+                {testDataMessage}
+              </div>
+            )}
+
+            {/* Test Data Status */}
+            {testDataStatus && (
+              <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', fontSize: '0.8rem' }}>
+                <strong>현재 데이터 상태:</strong>{' '}
+                저건강 설비 {testDataStatus.dataStatus.lowHealthEquipment}개 |{' '}
+                이상 관측값 {testDataStatus.dataStatus.anomalyObservations}개 |{' '}
+                트렌딩 관측값 {testDataStatus.dataStatus.trendingObservations}개 |{' '}
+                테스트 설비 {testDataStatus.dataStatus.testEquipment}개 |{' '}
+                Flow 센서 {testDataStatus.dataStatus.flowSensors}개 |{' '}
+                추론 노드 {testDataStatus.dataStatus.inferredNodes}개 |{' '}
+                추론 관계 {testDataStatus.dataStatus.inferredRelationships}개
+              </div>
+            )}
+
+            {/* Scenario List */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '0.75rem' }}>
+              {testScenarios.map((scenario) => {
+                const isLoaded = getScenarioStatus(scenario.id);
+                return (
+                  <div
+                    key={scenario.id}
+                    style={{
+                      padding: '0.75rem',
+                      backgroundColor: isLoaded ? '#c6f6d5' : 'white',
+                      borderRadius: '6px',
+                      border: isLoaded ? '1px solid #68d391' : '1px solid #e2e8f0',
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
+                            {isLoaded ? '✅' : '⬜'} {scenario.name}
+                          </span>
+                          <span
+                            style={{
+                              padding: '1px 6px',
+                              borderRadius: '3px',
+                              backgroundColor: '#667eea',
+                              color: 'white',
+                              fontSize: '0.65rem',
+                            }}
+                          >
+                            {scenario.targetRule}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#4a5568', marginBottom: '0.25rem' }}>
+                          {scenario.description}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: '#718096' }}>
+                          예상 결과: {scenario.expectedResult}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-sm"
+                        onClick={() => handleLoadScenario(scenario.id)}
+                        disabled={isLoadingTestData || isLoaded}
+                        style={{
+                          fontSize: '0.7rem',
+                          padding: '0.25rem 0.5rem',
+                          backgroundColor: isLoaded ? '#a0aec0' : '#4299e1',
+                          color: 'white',
+                        }}
+                      >
+                        {isLoaded ? '로드됨' : '로드'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <p style={{ fontSize: '0.75rem', color: '#744210', marginTop: '1rem', marginBottom: 0 }}>
+              💡 테스트 시나리오를 로드한 후 아래 추론 규칙의 "추론 과정 보기" 버튼을 클릭하면 실제 추론 과정을 확인할 수 있습니다.
+            </p>
+          </div>
+
           {/* Reasoning Stats */}
           <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
             <div className="stat-card">
               <div className="stat-value">{inferenceRules.length}</div>
-              <div className="stat-label">Inference Rules</div>
+              <div className="stat-label">추론 규칙 수</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{reasoningStats?.totalInferredNodes || 0}</div>
-              <div className="stat-label">Inferred Nodes</div>
+              <div className="stat-label">추론된 노드</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">{reasoningStats?.totalInferredRelationships || 0}</div>
-              <div className="stat-label">Inferred Relationships</div>
+              <div className="stat-label">추론된 관계</div>
             </div>
             <div className="stat-card">
               <div className="stat-value">
                 {(reasoningStats?.totalInferredNodes || 0) + (reasoningStats?.totalInferredRelationships || 0)}
               </div>
-              <div className="stat-label">Total Inferred</div>
+              <div className="stat-label">총 추론 결과</div>
             </div>
           </div>
 
@@ -1337,8 +1729,8 @@ const OntologyExplorer: React.FC = () => {
               style={{
                 padding: '0.75rem 1rem',
                 marginBottom: '1rem',
-                backgroundColor: reasoningMessage.includes('Failed') ? '#fed7d7' : '#c6f6d5',
-                color: reasoningMessage.includes('Failed') ? '#c53030' : '#276749',
+                backgroundColor: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#fed7d7' : '#c6f6d5',
+                color: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#c53030' : '#276749',
                 borderRadius: '6px',
                 fontSize: '0.875rem',
               }}
@@ -1351,14 +1743,14 @@ const OntologyExplorer: React.FC = () => {
             {/* Inference Rules */}
             <div className="card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 className="card-title" style={{ marginBottom: 0 }}>Inference Rules</h2>
+                <h2 className="card-title" style={{ marginBottom: 0 }}>추론 규칙</h2>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button
                     className="btn btn-primary"
                     onClick={handleRunAllRules}
                     disabled={isRunningReasoning}
                   >
-                    {isRunningReasoning ? 'Running...' : 'Run All Rules'}
+                    {isRunningReasoning ? '실행 중...' : '전체 규칙 실행'}
                   </button>
                   <button
                     className="btn btn-secondary"
@@ -1366,13 +1758,13 @@ const OntologyExplorer: React.FC = () => {
                     disabled={isRunningReasoning}
                     style={{ backgroundColor: '#e53e3e', color: 'white' }}
                   >
-                    Clear Inferred
+                    추론 결과 삭제
                   </button>
                 </div>
               </div>
 
               <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
-                Rule-based reasoning to infer new knowledge from existing data.
+                기존 데이터에서 새로운 지식을 추론하는 규칙 기반 추론 엔진입니다.
               </p>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1387,8 +1779,21 @@ const OntologyExplorer: React.FC = () => {
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div>
+                      <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                          <button
+                            onClick={() => setExpandedRule(expandedRule === rule.id ? null : rule.id)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              cursor: 'pointer',
+                              padding: '0',
+                              fontSize: '0.875rem',
+                              color: '#4a5568',
+                            }}
+                          >
+                            {expandedRule === rule.id ? '▼' : '▶'}
+                          </button>
                           <span style={{ fontWeight: 600 }}>{rule.name}</span>
                           <span
                             style={{
@@ -1403,62 +1808,148 @@ const OntologyExplorer: React.FC = () => {
                             {rule.category}
                           </span>
                         </div>
-                        <div style={{ fontSize: '0.875rem', color: '#718096' }}>{rule.description}</div>
+                        <div style={{ fontSize: '0.875rem', color: '#718096', marginLeft: '1.25rem' }}>{rule.description}</div>
                       </div>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
                         <button
                           className="btn btn-sm"
                           onClick={() => handleCheckRule(rule.id)}
-                          disabled={isRunningReasoning}
+                          disabled={isRunningReasoning || isLoadingTrace}
                         >
-                          Check
+                          확인
                         </button>
                         <button
                           className="btn btn-sm btn-primary"
                           onClick={() => handleApplyRule(rule.id)}
-                          disabled={isRunningReasoning}
+                          disabled={isRunningReasoning || isLoadingTrace}
                         >
-                          Apply
+                          적용
+                        </button>
+                        <button
+                          className="btn btn-sm"
+                          onClick={() => handleRunWithTrace(rule.id)}
+                          disabled={isRunningReasoning || isLoadingTrace}
+                          style={{ backgroundColor: '#9b59b6', color: 'white' }}
+                        >
+                          {isLoadingTrace ? '분석 중...' : '추론 과정 보기'}
                         </button>
                       </div>
                     </div>
+
+                    {/* Rule Details (Expanded) */}
+                    {expandedRule === rule.id && (
+                      <div
+                        style={{
+                          marginTop: '0.75rem',
+                          marginLeft: '1.25rem',
+                          padding: '0.75rem',
+                          backgroundColor: 'white',
+                          borderRadius: '6px',
+                          border: '1px solid #e2e8f0',
+                        }}
+                      >
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
+                            📋 조건 (Condition)
+                          </div>
+                          <div style={{ fontSize: '0.875rem', color: '#2d3748', backgroundColor: '#edf2f7', padding: '0.5rem', borderRadius: '4px' }}>
+                            {rule.condition || '조건 정보 없음'}
+                          </div>
+                        </div>
+
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
+                            🔄 추론 과정 (Inference)
+                          </div>
+                          <div style={{ fontSize: '0.875rem', color: '#2d3748', backgroundColor: '#e6fffa', padding: '0.5rem', borderRadius: '4px' }}>
+                            {rule.inference || '추론 과정 정보 없음'}
+                          </div>
+                        </div>
+
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
+                              📥 입력 데이터
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#2d3748' }}>
+                              {rule.inputData && rule.inputData.length > 0 ? (
+                                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                                  {rule.inputData.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span style={{ color: '#a0aec0' }}>없음</span>
+                              )}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
+                              📤 출력 데이터
+                            </div>
+                            <div style={{ fontSize: '0.8rem', color: '#2d3748' }}>
+                              {rule.outputData && rule.outputData.length > 0 ? (
+                                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                                  {rule.outputData.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span style={{ color: '#a0aec0' }}>없음</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Rule Check Result */}
                     {selectedRule === rule.id && ruleCheckResult && (
                       <div
                         style={{
                           marginTop: '0.75rem',
+                          marginLeft: '1.25rem',
                           padding: '0.75rem',
-                          backgroundColor: 'white',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
+                          backgroundColor: '#fffaf0',
+                          borderRadius: '6px',
+                          border: '1px solid #ed8936',
                         }}
                       >
-                        <div style={{ fontWeight: 500, marginBottom: '0.5rem' }}>
-                          Candidates: {ruleCheckResult.count || 0}
+                        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#c05621' }}>
+                          🔍 추론 대상 확인 결과: {ruleCheckResult.count || 0}건
                         </div>
                         {ruleCheckResult.candidates && ruleCheckResult.candidates.length > 0 ? (
-                          <div style={{ maxHeight: '150px', overflow: 'auto' }}>
-                            {ruleCheckResult.candidates.slice(0, 5).map((candidate: any, i: number) => (
+                          <div style={{ maxHeight: '200px', overflow: 'auto' }}>
+                            {ruleCheckResult.candidates.slice(0, 10).map((candidate: any, i: number) => (
                               <div
                                 key={i}
                                 style={{
-                                  padding: '0.25rem 0',
-                                  borderBottom: '1px solid #e2e8f0',
-                                  fontSize: '0.75rem',
+                                  padding: '0.5rem',
+                                  marginBottom: '0.5rem',
+                                  backgroundColor: 'white',
+                                  borderRadius: '4px',
+                                  fontSize: '0.8rem',
                                 }}
                               >
-                                {JSON.stringify(candidate).substring(0, 100)}...
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                  {Object.entries(candidate).map(([key, value]) => (
+                                    <span key={key} style={{ backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '3px' }}>
+                                      <strong>{key}:</strong> {String(value)}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
                             ))}
-                            {ruleCheckResult.candidates.length > 5 && (
-                              <div style={{ color: '#718096', marginTop: '0.25rem' }}>
-                                ...and {ruleCheckResult.candidates.length - 5} more
+                            {ruleCheckResult.candidates.length > 10 && (
+                              <div style={{ color: '#718096', marginTop: '0.25rem', fontSize: '0.8rem' }}>
+                                ...외 {ruleCheckResult.candidates.length - 10}건 더 있음
                               </div>
                             )}
                           </div>
                         ) : (
-                          <div style={{ color: '#718096' }}>No candidates found</div>
+                          <div style={{ color: '#718096', fontSize: '0.875rem' }}>
+                            현재 조건에 맞는 추론 대상이 없습니다.
+                          </div>
                         )}
                       </div>
                     )}
@@ -1470,10 +1961,10 @@ const OntologyExplorer: React.FC = () => {
               {runAllResult && (
                 <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f7fafc', borderRadius: '8px' }}>
                   <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-                    Inference Results ({runAllResult.timestamp})
+                    추론 실행 결과 ({runAllResult.timestamp})
                   </div>
                   <div style={{ fontSize: '0.875rem' }}>
-                    Total Inferred: <strong>{runAllResult.totalInferred}</strong>
+                    총 추론 결과: <strong>{runAllResult.totalInferred}건</strong>
                   </div>
                   <div style={{ marginTop: '0.5rem', maxHeight: '150px', overflow: 'auto' }}>
                     {runAllResult.results?.map((result: any, i: number) => (
@@ -1500,15 +1991,15 @@ const OntologyExplorer: React.FC = () => {
 
             {/* Inferred Facts */}
             <div className="card">
-              <h2 className="card-title">Inferred Knowledge</h2>
+              <h2 className="card-title">추론된 지식</h2>
               <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
-                Facts inferred by the reasoning engine.
+                추론 엔진에 의해 새롭게 생성된 지식입니다.
               </p>
 
               {/* Inferred Nodes */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  Inferred Nodes ({inferredFacts?.nodeCount || 0})
+                  추론된 노드 ({inferredFacts?.nodeCount || 0})
                 </h3>
                 {inferredFacts && inferredFacts.nodes.length > 0 ? (
                   <div style={{ maxHeight: '200px', overflow: 'auto' }}>
@@ -1546,14 +2037,14 @@ const OntologyExplorer: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>No inferred nodes</div>
+                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>추론된 노드 없음</div>
                 )}
               </div>
 
               {/* Inferred Relationships */}
               <div>
                 <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  Inferred Relationships ({inferredFacts?.relationshipCount || 0})
+                  추론된 관계 ({inferredFacts?.relationshipCount || 0})
                 </h3>
                 {inferredFacts && inferredFacts.relationships.length > 0 ? (
                   <div style={{ maxHeight: '200px', overflow: 'auto' }}>
@@ -1588,17 +2079,17 @@ const OntologyExplorer: React.FC = () => {
                     ))}
                   </div>
                 ) : (
-                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>No inferred relationships</div>
+                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>추론된 관계 없음</div>
                 )}
               </div>
 
               {/* Stats by Type */}
               {reasoningStats && (reasoningStats.nodesByType.length > 0 || reasoningStats.relationshipsByType.length > 0) && (
                 <div style={{ marginTop: '1.5rem' }}>
-                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>Statistics by Type</h3>
+                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>유형별 통계</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>Nodes</div>
+                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>노드</div>
                       {reasoningStats.nodesByType.map((item, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                           <span>{item.label}</span>
@@ -1607,7 +2098,7 @@ const OntologyExplorer: React.FC = () => {
                       ))}
                     </div>
                     <div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>Relationships</div>
+                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>관계</div>
                       {reasoningStats.relationshipsByType.map((item, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
                           <span>{item.type}</span>
@@ -1620,6 +2111,435 @@ const OntologyExplorer: React.FC = () => {
               )}
             </div>
           </div>
+
+          {/* Reasoning Trace Modal */}
+          {showTraceModal && reasoningTrace && (
+            <div
+              style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 10000,
+              }}
+              onClick={() => setShowTraceModal(false)}
+            >
+              <div
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  width: '90%',
+                  maxWidth: '900px',
+                  maxHeight: '85vh',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Modal Header */}
+                <div
+                  style={{
+                    padding: '1rem 1.5rem',
+                    borderBottom: '1px solid #e2e8f0',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    backgroundColor: '#f7fafc',
+                  }}
+                >
+                  <div>
+                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
+                      추론 과정 분석
+                    </h2>
+                    <div style={{ fontSize: '0.875rem', color: '#718096', marginTop: '0.25rem' }}>
+                      {reasoningTrace.ruleName}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span
+                      style={{
+                        padding: '4px 12px',
+                        borderRadius: '9999px',
+                        fontSize: '0.875rem',
+                        fontWeight: 500,
+                        backgroundColor: getResultBadgeStyle(reasoningTrace.result).bgColor,
+                        color: getResultBadgeStyle(reasoningTrace.result).color,
+                      }}
+                    >
+                      {getResultBadgeStyle(reasoningTrace.result).text}
+                    </span>
+                    <button
+                      onClick={() => setShowTraceModal(false)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        fontSize: '1.5rem',
+                        cursor: 'pointer',
+                        color: '#718096',
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modal Body */}
+                <div style={{ flex: 1, overflow: 'auto', padding: '1.5rem' }}>
+                  {/* Summary */}
+                  <div
+                    style={{
+                      padding: '1rem',
+                      backgroundColor: '#f0fff4',
+                      borderRadius: '8px',
+                      marginBottom: '1.5rem',
+                      border: '1px solid #9ae6b4',
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#276749' }}>
+                      📋 추론 결과 요약
+                    </div>
+                    <div style={{ fontSize: '0.9rem', color: '#2d3748' }}>
+                      {reasoningTrace.summary}
+                    </div>
+                    {reasoningTrace.inferredCount > 0 && (
+                      <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#276749' }}>
+                        새로 추론된 지식: <strong>{reasoningTrace.inferredCount}건</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Timeline Steps */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                      🔄 추론 단계 ({reasoningTrace.steps.length}단계)
+                    </h3>
+                    <div style={{ position: 'relative' }}>
+                      {/* Timeline line */}
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: '20px',
+                          top: '30px',
+                          bottom: '30px',
+                          width: '2px',
+                          backgroundColor: '#e2e8f0',
+                        }}
+                      />
+
+                      {reasoningTrace.steps.map((step, index) => {
+                        const stepStyle = getStepTypeStyle(step.type);
+                        const isExpanded = expandedSteps.has(step.stepNumber);
+
+                        return (
+                          <div
+                            key={step.stepNumber}
+                            style={{
+                              position: 'relative',
+                              paddingLeft: '50px',
+                              marginBottom: '1rem',
+                            }}
+                          >
+                            {/* Step indicator */}
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: '8px',
+                                top: '4px',
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                backgroundColor: stepStyle.bgColor,
+                                border: `2px solid ${stepStyle.color}`,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '0.9rem',
+                                zIndex: 1,
+                              }}
+                            >
+                              {stepStyle.icon}
+                            </div>
+
+                            {/* Step content */}
+                            <div
+                              style={{
+                                backgroundColor: stepStyle.bgColor,
+                                borderRadius: '8px',
+                                border: `1px solid ${stepStyle.color}30`,
+                                overflow: 'hidden',
+                              }}
+                            >
+                              {/* Step header */}
+                              <div
+                                style={{
+                                  padding: '0.75rem 1rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  justifyContent: 'space-between',
+                                  alignItems: 'center',
+                                }}
+                                onClick={() => toggleStepExpansion(step.stepNumber)}
+                              >
+                                <div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <span
+                                      style={{
+                                        fontSize: '0.7rem',
+                                        fontWeight: 600,
+                                        color: stepStyle.color,
+                                        textTransform: 'uppercase',
+                                      }}
+                                    >
+                                      Step {step.stepNumber}: {step.type}
+                                    </span>
+                                    {step.dataCount > 0 && (
+                                      <span
+                                        style={{
+                                          padding: '2px 6px',
+                                          backgroundColor: stepStyle.color,
+                                          color: 'white',
+                                          borderRadius: '4px',
+                                          fontSize: '0.7rem',
+                                        }}
+                                      >
+                                        {step.dataCount}건
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontWeight: 500, marginTop: '0.25rem' }}>
+                                    {step.description}
+                                  </div>
+                                  {step.resultSummary && (
+                                    <div style={{ fontSize: '0.875rem', color: '#4a5568', marginTop: '0.25rem' }}>
+                                      → {step.resultSummary}
+                                    </div>
+                                  )}
+                                </div>
+                                <span style={{ fontSize: '0.875rem', color: '#718096' }}>
+                                  {isExpanded ? '▲' : '▼'}
+                                </span>
+                              </div>
+
+                              {/* Step details (expanded) */}
+                              {isExpanded && (
+                                <div
+                                  style={{
+                                    padding: '0.75rem 1rem',
+                                    borderTop: `1px solid ${stepStyle.color}30`,
+                                    backgroundColor: 'white',
+                                  }}
+                                >
+                                  {step.descriptionDetail && (
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
+                                        상세 설명
+                                      </div>
+                                      <div style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>
+                                        {step.descriptionDetail}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {step.query && (
+                                    <div style={{ marginBottom: '0.75rem' }}>
+                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
+                                        쿼리
+                                      </div>
+                                      <code
+                                        style={{
+                                          display: 'block',
+                                          padding: '0.5rem',
+                                          backgroundColor: '#2d3748',
+                                          color: '#e2e8f0',
+                                          borderRadius: '4px',
+                                          fontSize: '0.8rem',
+                                          whiteSpace: 'pre-wrap',
+                                          wordBreak: 'break-all',
+                                        }}
+                                      >
+                                        {step.query}
+                                      </code>
+                                    </div>
+                                  )}
+
+                                  {step.data && step.data.length > 0 && (
+                                    <div>
+                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
+                                        데이터 ({step.data.length}건)
+                                      </div>
+                                      <div
+                                        style={{
+                                          maxHeight: '150px',
+                                          overflow: 'auto',
+                                          backgroundColor: '#f7fafc',
+                                          borderRadius: '4px',
+                                          padding: '0.5rem',
+                                        }}
+                                      >
+                                        {step.data.slice(0, 5).map((item, i) => (
+                                          <div
+                                            key={i}
+                                            style={{
+                                              padding: '0.5rem',
+                                              marginBottom: '0.25rem',
+                                              backgroundColor: 'white',
+                                              borderRadius: '4px',
+                                              fontSize: '0.8rem',
+                                              display: 'flex',
+                                              flexWrap: 'wrap',
+                                              gap: '0.5rem',
+                                            }}
+                                          >
+                                            {Object.entries(item).map(([key, value]) => (
+                                              <span
+                                                key={key}
+                                                style={{
+                                                  padding: '2px 6px',
+                                                  backgroundColor: '#e2e8f0',
+                                                  borderRadius: '3px',
+                                                }}
+                                              >
+                                                <strong>{key}:</strong> {String(value)}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        ))}
+                                        {step.data.length > 5 && (
+                                          <div style={{ color: '#718096', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                                            ...외 {step.data.length - 5}건 더 있음
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Evidence Section */}
+                  {reasoningTrace.evidence.length > 0 && (
+                    <div>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                        📌 추론 근거 ({reasoningTrace.evidence.length}건)
+                      </h3>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
+                          gap: '0.75rem',
+                        }}
+                      >
+                        {reasoningTrace.evidence.map((ev) => (
+                          <div
+                            key={ev.id}
+                            style={{
+                              padding: '0.75rem',
+                              backgroundColor: '#f7fafc',
+                              borderRadius: '6px',
+                              border: '1px solid #e2e8f0',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                              <span
+                                style={{
+                                  padding: '2px 6px',
+                                  backgroundColor: ev.type === 'PROPERTY' ? '#3498db' : ev.type === 'RELATIONSHIP' ? '#e67e22' : '#9b59b6',
+                                  color: 'white',
+                                  borderRadius: '4px',
+                                  fontSize: '0.7rem',
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                {ev.type}
+                              </span>
+                              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{ev.label}</span>
+                            </div>
+                            <div style={{ fontSize: '0.875rem', color: '#2d3748' }}>
+                              {ev.description}
+                            </div>
+                            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#718096' }}>
+                              <span style={{ backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '3px' }}>
+                                {ev.propertyName}: {String(ev.propertyValue)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Inferred Items */}
+                  {reasoningTrace.inferredItems.length > 0 && (
+                    <div style={{ marginTop: '1.5rem' }}>
+                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                        ✨ 새로 추론된 지식 ({reasoningTrace.inferredItems.length}건)
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {reasoningTrace.inferredItems.map((item, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              padding: '0.75rem',
+                              backgroundColor: '#fffaf0',
+                              borderRadius: '6px',
+                              border: '1px solid #ed8936',
+                              display: 'flex',
+                              flexWrap: 'wrap',
+                              gap: '0.5rem',
+                            }}
+                          >
+                            {Object.entries(item).map(([key, value]) => (
+                              <span
+                                key={key}
+                                style={{
+                                  padding: '4px 8px',
+                                  backgroundColor: '#fed7aa',
+                                  borderRadius: '4px',
+                                  fontSize: '0.875rem',
+                                }}
+                              >
+                                <strong>{key}:</strong> {String(value)}
+                              </span>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Modal Footer */}
+                <div
+                  style={{
+                    padding: '1rem 1.5rem',
+                    borderTop: '1px solid #e2e8f0',
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '0.5rem',
+                    backgroundColor: '#f7fafc',
+                  }}
+                >
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => setShowTraceModal(false)}
+                  >
+                    닫기
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
