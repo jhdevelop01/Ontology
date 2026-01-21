@@ -11,10 +11,11 @@ from existing data in the ontology.
 """
 
 from typing import List, Dict, Any, Optional
-from neo4j import GraphDatabase
 from flask import current_app
 from datetime import datetime
 from uuid import uuid4
+
+from .neo4j_service import Neo4jService
 
 
 class ReasoningTrace:
@@ -302,14 +303,6 @@ class ReasoningService:
     ]
 
     @classmethod
-    def get_driver(cls):
-        """Get Neo4j driver"""
-        uri = current_app.config.get('NEO4J_URI', 'bolt://localhost:7688')
-        user = current_app.config.get('NEO4J_USER', 'neo4j')
-        password = current_app.config.get('NEO4J_PASSWORD', 'upw_password_2024')
-        return GraphDatabase.driver(uri, auth=(user, password))
-
-    @classmethod
     def get_rules(cls) -> List[Dict[str, Any]]:
         """Get all inference rules with detailed information"""
         return [
@@ -341,9 +334,8 @@ class ReasoningService:
         if not rule:
             return {'status': 'error', 'message': f'Rule {rule_id} not found'}
 
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 result = session.run(rule['query'])
                 candidates = [dict(record) for record in result]
 
@@ -359,8 +351,6 @@ class ReasoningService:
                 }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def apply_rule(cls, rule_id: str) -> Dict[str, Any]:
@@ -369,9 +359,8 @@ class ReasoningService:
         if not rule:
             return {'status': 'error', 'message': f'Rule {rule_id} not found'}
 
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # First get candidates
                 result = session.run(rule['query'])
                 candidates = [dict(record) for record in result]
@@ -405,8 +394,6 @@ class ReasoningService:
                 }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def run_all_rules(cls) -> Dict[str, Any]:
@@ -435,9 +422,8 @@ class ReasoningService:
     @classmethod
     def get_inferred_facts(cls, limit: int = 100) -> Dict[str, Any]:
         """Get all inferred facts/relationships"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # Get inferred nodes
                 nodes_result = session.run('''
                     MATCH (n:Inferred)
@@ -471,15 +457,12 @@ class ReasoningService:
                 }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def clear_inferred_facts(cls) -> Dict[str, Any]:
         """Remove all inferred facts"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # Remove inferred relationships
                 rel_result = session.run('''
                     MATCH ()-[r]->()
@@ -505,15 +488,12 @@ class ReasoningService:
                 }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def get_inference_statistics(cls) -> Dict[str, Any]:
         """Get statistics about inferred knowledge"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # Count inferred nodes by type
                 nodes_result = session.run('''
                     MATCH (n:Inferred)
@@ -553,8 +533,6 @@ class ReasoningService:
                 }
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def run_rule_with_trace(cls, rule_id: str) -> Dict[str, Any]:
@@ -573,9 +551,8 @@ class ReasoningService:
             rule_description=rule['description']
         )
 
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # 규칙별 추론 과정 추적
                 if rule_id == 'rule_maintenance_needed':
                     cls._trace_maintenance_rule(session, rule, trace)
@@ -603,8 +580,6 @@ class ReasoningService:
                 'message': str(e),
                 'trace': trace.to_dict()
             }
-        finally:
-            driver.close()
 
     @classmethod
     def _trace_maintenance_rule(cls, session, rule, trace: ReasoningTrace):

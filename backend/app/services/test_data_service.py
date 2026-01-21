@@ -6,10 +6,11 @@ Test Data Service for UPW Ontology
 """
 
 from typing import List, Dict, Any, Optional
-from neo4j import GraphDatabase
 from flask import current_app
 from datetime import datetime, timedelta
 import random
+
+from .neo4j_service import Neo4jService
 
 
 class TestDataService:
@@ -62,14 +63,6 @@ class TestDataService:
     }
 
     @classmethod
-    def get_driver(cls):
-        """Get Neo4j driver"""
-        uri = current_app.config.get('NEO4J_URI', 'bolt://localhost:7688')
-        user = current_app.config.get('NEO4J_USER', 'neo4j')
-        password = current_app.config.get('NEO4J_PASSWORD', 'upw_password_2024')
-        return GraphDatabase.driver(uri, auth=(user, password))
-
-    @classmethod
     def get_scenarios(cls) -> List[Dict[str, Any]]:
         """모든 시나리오 목록 반환"""
         return cls.SCENARIOS
@@ -77,9 +70,8 @@ class TestDataService:
     @classmethod
     def get_scenario_status(cls) -> Dict[str, Any]:
         """현재 시나리오 데이터 상태 조회"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 status = {
                     'scenarios': [],
                     'dataStatus': {}
@@ -164,8 +156,6 @@ class TestDataService:
 
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def load_all_scenarios(cls) -> Dict[str, Any]:
@@ -212,9 +202,8 @@ class TestDataService:
         - UV-001: healthScore 38 (심각 저하)
         - PUMP-001: healthScore 58 (경미 저하)
         """
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # RO-001 건강 점수 저하
                 session.run('''
                     MATCH (e:Equipment {equipmentId: "RO-001"})
@@ -247,8 +236,6 @@ class TestDataService:
 
         except Exception as e:
             return {'scenario': 'scenario_a', 'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def load_scenario_b(cls) -> Dict[str, Any]:
@@ -259,9 +246,8 @@ class TestDataService:
         - 전도도 이상: 22 μS/cm (정상: <15)
         - 진동 이상: 12.8 mm/s (정상: <8)
         """
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 now = datetime.now().isoformat()
 
                 # 압력 이상 관측값 (RO-001-PS-IN)
@@ -352,8 +338,6 @@ class TestDataService:
 
         except Exception as e:
             return {'scenario': 'scenario_b', 'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def load_scenario_c(cls) -> Dict[str, Any]:
@@ -362,9 +346,8 @@ class TestDataService:
         - PUMP-001 진동: 4.0 → 4.2 → 4.5 → 5.0 → 5.5 → 6.0 → 6.5 mm/s (7일간 11개)
         - 평균: ~5.0, 최신: 6.5 (130%)
         """
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # 진동 센서 확보
                 session.run('''
                     MATCH (e:Equipment {equipmentId: "PUMP-001"})
@@ -411,8 +394,6 @@ class TestDataService:
 
         except Exception as e:
             return {'scenario': 'scenario_c', 'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def load_scenario_d(cls) -> Dict[str, Any]:
@@ -422,9 +403,8 @@ class TestDataService:
         - UV-002 (신규): UVSterilizer
         - 동일 공정영역: AREA-POLISH
         """
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # 공정영역 확보
                 session.run('''
                     MERGE (a:ProcessArea {areaId: "AREA-POLISH"})
@@ -477,8 +457,6 @@ class TestDataService:
 
         except Exception as e:
             return {'scenario': 'scenario_d', 'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def load_scenario_e(cls) -> Dict[str, Any]:
@@ -487,9 +465,8 @@ class TestDataService:
         - RO-002: 기존 Pressure 센서 + 신규 Flow 센서
         - HP-001: Pressure 센서 + 신규 Flow 센서
         """
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # RO-002 Pressure 센서 확보
                 session.run('''
                     MATCH (e:Equipment {equipmentId: "RO-002"})
@@ -545,15 +522,12 @@ class TestDataService:
 
         except Exception as e:
             return {'scenario': 'scenario_e', 'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def reset_test_data(cls) -> Dict[str, Any]:
         """테스트 데이터를 원래 상태로 복원"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # 1. 추론 결과 삭제
                 session.run('MATCH (n:Inferred) DETACH DELETE n')
                 session.run('MATCH ()-[r]->() WHERE r.isInferred = true DELETE r')
@@ -583,15 +557,12 @@ class TestDataService:
 
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
 
     @classmethod
     def clear_inferred_data(cls) -> Dict[str, Any]:
         """추론된 데이터만 삭제"""
-        driver = cls.get_driver()
         try:
-            with driver.session() as session:
+            with Neo4jService.session() as session:
                 # 추론 노드 삭제
                 nodes_result = session.run('''
                     MATCH (n:Inferred)
@@ -622,5 +593,3 @@ class TestDataService:
 
         except Exception as e:
             return {'status': 'error', 'message': str(e)}
-        finally:
-            driver.close()
