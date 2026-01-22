@@ -10,6 +10,28 @@ from neo4j.time import Date as Neo4jDate, DateTime as Neo4jDateTime
 from flask import current_app
 
 
+def serialize_neo4j_value(value):
+    """Convert Neo4j types to JSON-serializable Python types"""
+    if isinstance(value, Neo4jDateTime):
+        return value.isoformat()
+    elif isinstance(value, Neo4jDate):
+        return value.isoformat()
+    elif isinstance(value, datetime):
+        return value.isoformat()
+    elif isinstance(value, date):
+        return value.isoformat()
+    elif isinstance(value, dict):
+        return {k: serialize_neo4j_value(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [serialize_neo4j_value(v) for v in value]
+    return value
+
+
+def serialize_neo4j_dict(d):
+    """Convert a dict with Neo4j types to JSON-serializable dict"""
+    return {k: serialize_neo4j_value(v) for k, v in d.items()}
+
+
 class Neo4jService:
     """Service class for Neo4j database operations"""
 
@@ -367,7 +389,7 @@ class Neo4jService:
                 node_data = {
                     'id': n.element_id,
                     'labels': list(n.labels),
-                    'properties': dict(n)
+                    'properties': serialize_neo4j_dict(dict(n))
                 }
                 # Add display label
                 if 'Equipment' in n.labels:
@@ -399,7 +421,7 @@ class Neo4jService:
                     'source': r.start_node.element_id,
                     'target': r.end_node.element_id,
                     'type': r.type,
-                    'properties': dict(r)
+                    'properties': serialize_neo4j_dict(dict(r))
                 })
 
             return {'nodes': nodes, 'edges': edges}

@@ -165,6 +165,11 @@ const OntologyExplorer: React.FC = () => {
   const [showFilters, setShowFilters] = useState(true);
   const [showNodePanel, setShowNodePanel] = useState(true);
 
+  // Graph resize state
+  const [graphSize, setGraphSize] = useState({ width: 1050, height: 1100 });
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0 });
+
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
@@ -435,6 +440,43 @@ const OntologyExplorer: React.FC = () => {
     setHighlightLinks(new Set());
     setPathResult(null);
   }, []);
+
+  // Graph resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: graphSize.width,
+      height: graphSize.height,
+    };
+  }, [graphSize]);
+
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const deltaX = e.clientX - resizeStartRef.current.x;
+      const deltaY = e.clientY - resizeStartRef.current.y;
+      const newWidth = Math.max(400, resizeStartRef.current.width + deltaX);
+      const newHeight = Math.max(400, resizeStartRef.current.height + deltaY);
+      setGraphSize({ width: newWidth, height: newHeight });
+    };
+
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+    };
+
+    if (isResizing) {
+      window.addEventListener('mousemove', handleResizeMove);
+      window.addEventListener('mouseup', handleResizeEnd);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, [isResizing]);
 
   // Toggle node type visibility
   const toggleNodeType = (type: string) => {
@@ -1216,37 +1258,82 @@ const OntologyExplorer: React.FC = () => {
               {/* Controls */}
               <div className="card">
                 <h2 className="card-title">Controls</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button onClick={handleZoomIn} className="btn btn-sm">+</button>
-                    <button onClick={handleZoomOut} className="btn btn-sm">-</button>
-                    <button onClick={handleZoomReset} className="btn btn-sm">Fit</button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {/* 노드 크기 */}
+                  <div>
+                    <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.375rem' }}>노드 크기</div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button onClick={handleZoomOut} className="btn btn-sm" style={{ flex: 1 }}>−</button>
+                      <button onClick={handleZoomIn} className="btn btn-sm" style={{ flex: 1 }}>+</button>
+                      <button onClick={handleZoomReset} className="btn btn-sm" style={{ flex: 1 }}>Fit</button>
+                    </div>
                   </div>
-                  <button onClick={toggleFullscreen} className="btn btn-sm" style={{ width: '100%' }}>
-                    {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
-                  </button>
+
+                  {/* 그래프 크기 */}
+                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+                    <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.375rem' }}>그래프 크기</div>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <button
+                        onClick={() => setGraphSize(prev => ({
+                          width: Math.max(400, prev.width - 100),
+                          height: Math.max(400, prev.height - 100)
+                        }))}
+                        className="btn btn-sm"
+                        style={{ flex: 1 }}
+                      >
+                        −
+                      </button>
+                      <button
+                        onClick={() => setGraphSize(prev => ({
+                          width: prev.width + 100,
+                          height: prev.height + 100
+                        }))}
+                        className="btn btn-sm"
+                        style={{ flex: 1 }}
+                      >
+                        +
+                      </button>
+                      <button
+                        onClick={() => setGraphSize({ width: 1050, height: 1100 })}
+                        className="btn btn-sm"
+                        style={{ flex: 1 }}
+                      >
+                        Fit
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Fullscreen */}
+                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem' }}>
+                    <button onClick={toggleFullscreen} className="btn btn-sm" style={{ width: '100%' }}>
+                      {isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
           {/* Graph + Node Details */}
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
             {/* Graph */}
             <div
               ref={graphContainerRef}
               style={{
-                flex: 1,
+                flex: isFullscreen ? 1 : 'none',
                 position: isFullscreen ? 'fixed' : 'relative',
                 top: isFullscreen ? 0 : 'auto',
                 left: isFullscreen ? 0 : 'auto',
-                height: isFullscreen ? '100vh' : '600px',
-                width: isFullscreen ? '100vw' : 'auto',
+                height: isFullscreen ? '100vh' : `${graphSize.height}px`,
+                width: isFullscreen ? '100vw' : `${graphSize.width}px`,
+                minWidth: isFullscreen ? 'auto' : '400px',
+                minHeight: isFullscreen ? 'auto' : '400px',
                 zIndex: isFullscreen ? 9999 : 'auto',
                 backgroundColor: '#f8fafc',
                 borderRadius: isFullscreen ? 0 : '12px',
                 overflow: 'hidden',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                border: isResizing ? '2px solid #3182ce' : 'none',
               }}
             >
               {/* Fullscreen header */}
@@ -1323,6 +1410,43 @@ const OntologyExplorer: React.FC = () => {
                 >
                   No graph data available (check filters)
                 </div>
+              )}
+
+              {/* Size indicator */}
+              {!isFullscreen && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    bottom: '8px',
+                    left: '8px',
+                    padding: '4px 8px',
+                    backgroundColor: 'rgba(0,0,0,0.6)',
+                    color: 'white',
+                    borderRadius: '4px',
+                    fontSize: '11px',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {graphSize.width} x {graphSize.height}
+                </div>
+              )}
+
+              {/* Resize handle */}
+              {!isFullscreen && (
+                <div
+                  onMouseDown={handleResizeStart}
+                  style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    right: 0,
+                    width: '20px',
+                    height: '20px',
+                    cursor: 'nwse-resize',
+                    background: 'linear-gradient(135deg, transparent 50%, #3182ce 50%)',
+                    borderRadius: '0 0 12px 0',
+                  }}
+                  title="드래그하여 크기 조절"
+                />
               )}
             </div>
 
