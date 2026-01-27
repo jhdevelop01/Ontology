@@ -340,9 +340,37 @@ class Neo4jService:
     # =========================================================================
 
     @classmethod
-    def get_graph_data(cls, node_type: Optional[str] = None, center_id: Optional[str] = None, depth: int = 2) -> Dict[str, Any]:
-        """Get graph data for visualization"""
-        if center_id:
+    def get_graph_data(cls, node_type: Optional[str] = None, center_id: Optional[str] = None, depth: int = 2, fetch_all: bool = False, exclude_observations: bool = True) -> Dict[str, Any]:
+        """Get graph data for visualization
+
+        Args:
+            node_type: Filter by node type
+            center_id: Center the graph on a specific node
+            depth: Depth of traversal from center node
+            fetch_all: If True, fetch all nodes and edges from the database
+            exclude_observations: If True (default), exclude Observation/SensorReading nodes for performance
+        """
+        if fetch_all:
+            if exclude_observations:
+                # Get ALL nodes except Observation/SensorReading (for performance)
+                query = """
+                MATCH (n)
+                WHERE NOT n:Observation AND NOT n:SensorReading
+                OPTIONAL MATCH (n)-[r]->(m)
+                WHERE NOT m:Observation AND NOT m:SensorReading
+                WITH collect(DISTINCT n) AS nodes, collect(DISTINCT r) AS rels
+                RETURN nodes, rels
+                """
+            else:
+                # Get ALL nodes and edges including observations
+                query = """
+                MATCH (n)
+                OPTIONAL MATCH (n)-[r]->()
+                WITH collect(DISTINCT n) AS nodes, collect(DISTINCT r) AS rels
+                RETURN nodes, rels
+                """
+            params = {}
+        elif center_id:
             # Get subgraph centered on a specific node
             query = """
             MATCH (center)
@@ -400,13 +428,31 @@ class Neo4jService:
                     node_data['nodeType'] = 'sensor'
                 elif 'ProcessArea' in n.labels:
                     node_data['displayLabel'] = n.get('name', n.get('areaId', ''))
-                    node_data['nodeType'] = 'area'
+                    node_data['nodeType'] = 'processarea'
                 elif 'Maintenance' in n.labels:
-                    node_data['displayLabel'] = n.get('description', '')[:20]
+                    node_data['displayLabel'] = n.get('description', '')[:20] if n.get('description') else 'Maintenance'
                     node_data['nodeType'] = 'maintenance'
                 elif 'Anomaly' in n.labels:
-                    node_data['displayLabel'] = n.get('type', '')
+                    node_data['displayLabel'] = n.get('type', 'Anomaly')
                     node_data['nodeType'] = 'anomaly'
+                elif 'Observation' in n.labels or 'SensorReading' in n.labels:
+                    node_data['displayLabel'] = f"Obs: {n.get('value', '')}"[:20]
+                    node_data['nodeType'] = 'observation'
+                elif 'Axiom' in n.labels:
+                    node_data['displayLabel'] = n.get('name', n.get('axiomId', 'Axiom'))
+                    node_data['nodeType'] = 'axiom'
+                elif 'Constraint' in n.labels:
+                    node_data['displayLabel'] = n.get('name', n.get('constraintId', 'Constraint'))
+                    node_data['nodeType'] = 'constraint'
+                elif 'FailurePrediction' in n.labels:
+                    node_data['displayLabel'] = n.get('type', 'Prediction')
+                    node_data['nodeType'] = 'prediction'
+                elif 'Dependency' in n.labels:
+                    node_data['displayLabel'] = n.get('type', 'Dependency')
+                    node_data['nodeType'] = 'dependency'
+                elif 'Correlation' in n.labels:
+                    node_data['displayLabel'] = f"Corr: {n.get('coefficient', '')}"[:15]
+                    node_data['nodeType'] = 'correlation'
                 else:
                     node_data['displayLabel'] = str(list(n.labels)[0]) if n.labels else 'Unknown'
                     node_data['nodeType'] = 'other'
@@ -512,7 +558,7 @@ class Neo4jService:
                 RETURN e.type AS type, count(e) AS count
                 ORDER BY count DESC
             """)
-            equipment_by_type = {r['type']: r['count'] for r in eq_by_type_result}
+            equipment_by_type = {(r['type'] or 'Unknown'): r['count'] for r in eq_by_type_result}
 
             # Sensor stats
             sensor_result = session.run("MATCH (s:Sensor) RETURN count(s) AS total")
@@ -524,7 +570,7 @@ class Neo4jService:
                 RETURN s.type AS type, count(s) AS count
                 ORDER BY count DESC
             """)
-            sensor_by_type = {r['type']: r['count'] for r in sensor_by_type_result}
+            sensor_by_type = {(r['type'] or 'Unknown'): r['count'] for r in sensor_by_type_result}
 
             # Active anomalies
             anomaly_result = session.run("""

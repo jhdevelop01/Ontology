@@ -1,0 +1,54 @@
+@prefix upw: <http://example.org/upw#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# ==============================================================================
+# UPW Ontology - Structural Axioms
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# AX001: Disjoint Classes
+# Equipment와 Sensor는 서로 분리된 클래스
+# ------------------------------------------------------------------------------
+upw:Equipment owl:disjointWith upw:Sensor .
+
+# ------------------------------------------------------------------------------
+# AX002: Property Domain
+# healthScore 속성의 도메인은 Equipment
+# ------------------------------------------------------------------------------
+upw:healthScore rdfs:domain upw:Equipment ;
+                rdfs:range xsd:float ;
+                rdfs:comment "건강 점수는 Equipment에만 적용되며 0-100 사이의 값" .
+
+# ------------------------------------------------------------------------------
+# AX003: Inverse Properties
+# hasSensor와 isAttachedTo는 역관계
+# ------------------------------------------------------------------------------
+upw:hasSensor owl:inverseOf upw:isAttachedTo ;
+              rdfs:domain upw:Equipment ;
+              rdfs:range upw:Sensor ;
+              rdfs:comment "Equipment가 Sensor를 가지면, Sensor는 Equipment에 부착됨" .
+
+# ------------------------------------------------------------------------------
+# AX004: Transitive Property
+# FEEDS_INTO는 전이적 속성
+# ------------------------------------------------------------------------------
+upw:feedsInto rdf:type owl:TransitiveProperty ;
+              rdfs:domain upw:Equipment ;
+              rdfs:range upw:Equipment ;
+              rdfs:comment "A→B, B→C이면 A→C도 성립" .
+
+# ------------------------------------------------------------------------------
+# AX005: Functional Property
+# healthScore는 함수적 속성 (각 Equipment는 정확히 하나의 값)
+# ------------------------------------------------------------------------------
+upw:healthScore rdf:type owl:FunctionalProperty ;
+                rdfs:comment "각 Equipment는 정확히 하나의 healthScore 값을 가짐" .
+
+# ------------------------------------------------------------------------------
+# Property Chain Axiom
+# FEEDS_INTO와 LOCATED_IN을 결합하여 INFLUENCES 추론
+# ------------------------------------------------------------------------------
+upw:influences owl:propertyChainAxiom (upw:feedsInto upw:locatedIn) ;
+               rdfs:comment "E1이 E2로 공급하고, E2가 영역 A에 위치하면 E1이 A에 영향을 미침" .

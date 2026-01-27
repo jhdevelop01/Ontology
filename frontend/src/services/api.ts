@@ -192,10 +192,11 @@ export const ontologyApi = {
     return response.data;
   },
 
-  getGraph: async (center?: string, depth?: number): Promise<ApiResponse<GraphData>> => {
+  getGraph: async (center?: string, depth?: number, fetchAll?: boolean): Promise<ApiResponse<GraphData>> => {
     const params = new URLSearchParams();
     if (center) params.append('center', center);
     if (depth) params.append('depth', depth.toString());
+    if (fetchAll) params.append('fetch_all', 'true');
     const response = await api.get(`/ontology/graph?${params}`);
     return response.data;
   },
@@ -519,6 +520,112 @@ export const testDataApi = {
     deletedRelationships: number;
   }>> => {
     const response = await api.post('/ontology/test-data/clear-inferred');
+    return response.data;
+  },
+};
+
+// Axiom API
+export const axiomApi = {
+  // Get all axioms
+  getAll: async (): Promise<ApiResponse<{
+    axioms: Array<{
+      axiomId: string;
+      type: string;
+      name: string;
+      description: string;
+      severity: string;
+      [key: string]: any;
+    }>;
+    count: number;
+  }>> => {
+    const response = await api.get('/ontology/axioms');
+    return response.data;
+  },
+
+  // Check a specific axiom
+  check: async (axiomId: string): Promise<ApiResponse<{
+    result: {
+      axiomId: string;
+      axiomName: string;
+      passed: boolean;
+      violationCount: number;
+      violations: Array<{
+        nodeId: string | null;
+        description: string;
+        details: Record<string, any>;
+      }>;
+      checkedAt: string;
+    };
+  }>> => {
+    const response = await api.post(`/ontology/axioms/${axiomId}/check`);
+    return response.data;
+  },
+
+  // Check all axioms
+  checkAll: async (): Promise<ApiResponse<any>> => {
+    const response = await api.post('/ontology/axioms/check-all');
+    return response.data;
+  },
+};
+
+// Constraint API
+export const constraintApi = {
+  // Get all constraints
+  getAll: async (): Promise<ApiResponse<{
+    constraints: Array<{
+      constraintId: string;
+      type: string;
+      name: string;
+      description: string;
+      nodeType?: string;
+      severity: string;
+      [key: string]: any;
+    }>;
+    count: number;
+  }>> => {
+    const response = await api.get('/ontology/constraints');
+    return response.data;
+  },
+
+  // Validate a specific constraint
+  validate: async (constraintId: string): Promise<ApiResponse<{
+    result: {
+      constraintId: string;
+      constraintName: string;
+      passed: boolean;
+      violationCount: number;
+      violations: Array<{
+        nodeId: string | null;
+        description: string;
+        details: Record<string, any>;
+      }>;
+      checkedAt: string;
+    };
+  }>> => {
+    const response = await api.post(`/ontology/constraints/${constraintId}/validate`);
+    return response.data;
+  },
+
+  // Validate all constraints
+  validateAll: async (): Promise<ApiResponse<any>> => {
+    const response = await api.post('/ontology/constraints/validate-all');
+    return response.data;
+  },
+};
+
+// Combined validation and reasoning
+export const validationApi = {
+  validateAndRun: async (enableConstraints: boolean = true): Promise<ApiResponse<{
+    results: {
+      axiomResults: any;
+      constraintResults: any;
+      reasoningResults: any;
+      totalViolations: number;
+    };
+  }>> => {
+    const response = await api.post('/ontology/reasoning/validate-and-run', {
+      enableConstraints,
+    });
     return response.data;
   },
 };

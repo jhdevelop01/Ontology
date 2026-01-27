@@ -5,6 +5,8 @@ from flask import Blueprint, jsonify, request, Response
 from ..services.neo4j_service import Neo4jService
 from ..services.reasoning_service import ReasoningService
 from ..services.test_data_service import TestDataService
+from ..services.axiom_service import AxiomService
+from ..services.constraint_service import ConstraintService
 from neo4j import GraphDatabase
 from flask import current_app
 import json
@@ -22,12 +24,26 @@ def get_neo4j_driver():
 
 @bp.route('/graph', methods=['GET'])
 def get_graph():
-    """Get graph data for visualization"""
+    """Get graph data for visualization
+
+    Query Parameters:
+        center: Center node ID for subgraph
+        depth: Depth of traversal from center node (default: 2)
+        fetch_all: If 'true', fetch all nodes and edges from database
+        exclude_observations: If 'false', include Observation/SensorReading nodes (default: true for performance)
+    """
     try:
         center_id = request.args.get('center')
         depth = request.args.get('depth', 2, type=int)
+        fetch_all = request.args.get('fetch_all', 'false').lower() == 'true'
+        exclude_observations = request.args.get('exclude_observations', 'true').lower() != 'false'
 
-        graph_data = Neo4jService.get_graph_data(center_id=center_id, depth=depth)
+        graph_data = Neo4jService.get_graph_data(
+            center_id=center_id,
+            depth=depth,
+            fetch_all=fetch_all,
+            exclude_observations=exclude_observations
+        )
         return jsonify({
             'status': 'success',
             'data': graph_data
@@ -882,5 +898,203 @@ def clear_inferred_data():
             return jsonify(result), 400
 
         return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============================================================================
+# Axiom Endpoints
+# ============================================================================
+
+@bp.route('/axioms', methods=['GET'])
+def get_axioms():
+    """Get all defined axioms"""
+    try:
+        driver = get_neo4j_driver()
+        axiom_service = AxiomService(driver)
+        axioms = axiom_service.get_all_axioms()
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'axioms': axioms,
+                'count': len(axioms)
+            }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/axioms/<axiom_id>/check', methods=['POST'])
+def check_axiom(axiom_id):
+    """Check a specific axiom for violations"""
+    try:
+        driver = get_neo4j_driver()
+        axiom_service = AxiomService(driver)
+        result = axiom_service.check_axiom(axiom_id)
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'result': {
+                    'axiomId': result.axiom_id,
+                    'axiomName': result.axiom_name,
+                    'passed': result.passed,
+                    'violationCount': result.violation_count,
+                    'violations': [
+                        {
+                            'nodeId': v.node_id,
+                            'description': v.description,
+                            'details': v.details
+                        }
+                        for v in result.violations
+                    ],
+                    'checkedAt': result.checked_at
+                }
+            }
+        })
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/axioms/check-all', methods=['POST'])
+def check_all_axioms():
+    """Check all axioms for violations"""
+    try:
+        driver = get_neo4j_driver()
+        axiom_service = AxiomService(driver)
+        result = axiom_service.check_all_axioms()
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============================================================================
+# Constraint Endpoints
+# ============================================================================
+
+@bp.route('/constraints', methods=['GET'])
+def get_constraints():
+    """Get all defined constraints"""
+    try:
+        driver = get_neo4j_driver()
+        constraint_service = ConstraintService(driver)
+        constraints = constraint_service.get_all_constraints()
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'constraints': constraints,
+                'count': len(constraints)
+            }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/constraints/<constraint_id>/validate', methods=['POST'])
+def validate_constraint(constraint_id):
+    """Validate a specific constraint"""
+    try:
+        driver = get_neo4j_driver()
+        constraint_service = ConstraintService(driver)
+        result = constraint_service.validate_constraint(constraint_id)
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'result': {
+                    'constraintId': result.constraint_id,
+                    'constraintName': result.constraint_name,
+                    'passed': result.passed,
+                    'violationCount': result.violation_count,
+                    'violations': [
+                        {
+                            'nodeId': v.node_id,
+                            'description': v.description,
+                            'details': v.details
+                        }
+                        for v in result.violations
+                    ],
+                    'checkedAt': result.checked_at
+                }
+            }
+        })
+    except ValueError as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 404
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/constraints/validate-all', methods=['POST'])
+def validate_all_constraints():
+    """Validate all constraints"""
+    try:
+        driver = get_neo4j_driver()
+        constraint_service = ConstraintService(driver)
+        result = constraint_service.validate_all_constraints()
+        driver.close()
+
+        return jsonify({
+            'status': 'success',
+            'data': result
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============================================================================
+# Combined Validation and Reasoning
+# ============================================================================
+
+@bp.route('/reasoning/validate-and-run', methods=['POST'])
+def validate_and_run():
+    """Validate axioms and constraints, then run reasoning if all pass"""
+    try:
+        data = request.get_json() or {}
+        enable_constraints = data.get('enableConstraints', True)
+
+        driver = get_neo4j_driver()
+
+        # Check axioms
+        axiom_service = AxiomService(driver)
+        axiom_results = axiom_service.check_all_axioms()
+
+        # Check constraints
+        constraint_results = None
+        if enable_constraints:
+            constraint_service = ConstraintService(driver)
+            constraint_results = constraint_service.validate_all_constraints()
+
+        driver.close()
+
+        # If there are violations, return them
+        total_violations = axiom_results.get('totalViolations', 0)
+        if enable_constraints and constraint_results:
+            total_violations += constraint_results.get('totalViolations', 0)
+
+        # Run reasoning
+        reasoning_results = ReasoningService.run_all_rules()
+
+        return jsonify({
+            'status': 'success',
+            'results': {
+                'axiomResults': axiom_results,
+                'constraintResults': constraint_results,
+                'reasoningResults': reasoning_results,
+                'totalViolations': total_violations
+            }
+        })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
