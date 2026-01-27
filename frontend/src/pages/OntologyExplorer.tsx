@@ -1,7 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
-import { ontologyApi, reasoningApi, testDataApi } from '../services/api';
+import { ontologyApi, reasoningApi, testDataApi, axiomApi, constraintApi } from '../services/api';
 import type { OntologyClass } from '../types';
+import AxiomViewer from '../components/AxiomViewer';
+import ConstraintViewer from '../components/ConstraintViewer';
+import ViolationPanel from '../components/ViolationPanel';
+import type { Axiom, AxiomCheckAllResult } from '../types/axiom.types';
+import type { Constraint, ConstraintCheckAllResult } from '../types/constraint.types';
 
 // Reasoning types
 interface InferenceRule {
@@ -99,8 +104,37 @@ const NODE_COLORS: Record<string, string> = {
   'anomaly': '#e74c3c',
   'observation': '#1abc9c',
   'processarea': '#9b59b6',
+  'axiom': '#8e44ad',
+  'constraint': '#c0392b',
+  'prediction': '#d35400',
+  'dependency': '#16a085',
+  'correlation': '#27ae60',
   'other': '#95a5a6',
 };
+
+// Node type groupings
+const NODE_TYPE_GROUPS: Record<string, { label: string; types: string[] }> = {
+  general: {
+    label: '일반 데이터',
+    types: ['equipment', 'sensor', 'area', 'processarea', 'maintenance', 'observation', 'anomaly', 'prediction', 'dependency', 'correlation', 'other'],
+  },
+  axiomConstraint: {
+    label: '공리/제약조건',
+    types: ['axiom', 'constraint'],
+  },
+};
+
+// Relationship type patterns for grouping
+const AXIOM_CONSTRAINT_REL_PATTERNS = [
+  'APPLIES_TO',
+  'VALIDATES',
+  'CHECKS',
+  'VIOLATES',
+  'SATISFIES',
+  'DEFINED_BY',
+  'HAS_AXIOM',
+  'HAS_CONSTRAINT',
+];
 
 // Extended graph types for force graph
 interface ForceGraphNode {
@@ -142,7 +176,7 @@ interface NodeDetails {
   incoming: Array<{ type: string; source: string; sourceLabels: string[]; sourceName: string }>;
 }
 
-type ActiveTab = 'graph' | 'query' | 'hierarchy' | 'reasoning';
+type ActiveTab = 'main' | 'query' | 'hierarchy' | 'axioms';
 
 const OntologyExplorer: React.FC = () => {
   // Core state
@@ -160,7 +194,7 @@ const OntologyExplorer: React.FC = () => {
   const [hoverNode, setHoverNode] = useState<ForceGraphNode | null>(null);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<ActiveTab>('graph');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('main');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
   const [showNodePanel, setShowNodePanel] = useState(true);
@@ -216,6 +250,30 @@ const OntologyExplorer: React.FC = () => {
   const [isLoadingTestData, setIsLoadingTestData] = useState(false);
   const [testDataMessage, setTestDataMessage] = useState<string | null>(null);
 
+  // Axioms & Constraints
+  const [axioms, setAxioms] = useState<Axiom[]>([]);
+  const [constraints, setConstraints] = useState<Constraint[]>([]);
+  const [axiomResults, setAxiomResults] = useState<AxiomCheckAllResult | null>(null);
+  const [constraintResults, setConstraintResults] = useState<ConstraintCheckAllResult | null>(null);
+  const [isCheckingAxioms, setIsCheckingAxioms] = useState(false);
+  const [isValidatingConstraints, setIsValidatingConstraints] = useState(false);
+
+  // Individual check results
+  const [individualAxiomResults, setIndividualAxiomResults] = useState<Record<string, {
+    passed: boolean;
+    violationCount: number;
+    violations: Array<{ nodeId: string | null; description: string; details: Record<string, any> }>;
+    checkedAt: string;
+  }>>({});
+  const [individualConstraintResults, setIndividualConstraintResults] = useState<Record<string, {
+    passed: boolean;
+    violationCount: number;
+    violations: Array<{ nodeId: string | null; description: string; details: Record<string, any> }>;
+    checkedAt: string;
+  }>>({});
+  const [checkingAxiomId, setCheckingAxiomId] = useState<string | null>(null);
+  const [checkingConstraintId, setCheckingConstraintId] = useState<string | null>(null);
+
   // Refs
   const graphRef = useRef<any>();
   const graphContainerRef = useRef<HTMLDivElement>(null);
@@ -225,11 +283,13 @@ const OntologyExplorer: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [classesRes, graphRes, relTypesRes, hierarchyRes] = await Promise.all([
+        const [classesRes, graphRes, relTypesRes, hierarchyRes, axiomsRes, constraintsRes] = await Promise.all([
           ontologyApi.getClasses(),
-          ontologyApi.getGraph(),
+          ontologyApi.getGraph(undefined, undefined, true),  // fetch all nodes and edges
           ontologyApi.getRelationshipTypes(),
           ontologyApi.getHierarchy(),
+          axiomApi.getAll(),
+          constraintApi.getAll(),
         ]);
 
         if (classesRes.status === 'success' && classesRes.data) {
@@ -263,6 +323,14 @@ const OntologyExplorer: React.FC = () => {
 
         if (hierarchyRes.status === 'success' && hierarchyRes.data?.tree) {
           setHierarchy(hierarchyRes.data.tree);
+        }
+
+        if (axiomsRes.status === 'success' && axiomsRes.data?.axioms) {
+          setAxioms(axiomsRes.data.axioms as Axiom[]);
+        }
+
+        if (constraintsRes.status === 'success' && constraintsRes.data?.constraints) {
+          setConstraints(constraintsRes.data.constraints as Constraint[]);
         }
       } catch (err) {
         setError('Failed to load ontology data');
@@ -732,7 +800,7 @@ const OntologyExplorer: React.FC = () => {
 
   // Load reasoning data when tab is active
   useEffect(() => {
-    if (activeTab === 'reasoning') {
+    if (activeTab === 'main') {
       fetchReasoningData();
     }
   }, [activeTab, fetchReasoningData]);
@@ -873,7 +941,7 @@ const OntologyExplorer: React.FC = () => {
 
   // Load test data when reasoning tab is active
   useEffect(() => {
-    if (activeTab === 'reasoning') {
+    if (activeTab === 'main') {
       fetchTestDataStatus();
     }
   }, [activeTab, fetchTestDataStatus]);
@@ -1011,14 +1079,44 @@ const OntologyExplorer: React.FC = () => {
       '예측': '#9b59b6',
       '구조': '#3498db',
       '분석': '#2ecc71',
+      '공리': '#6b7280',
       // English fallbacks
       maintenance: '#e67e22',
       anomaly: '#e74c3c',
       prediction: '#9b59b6',
       structure: '#3498db',
       analysis: '#2ecc71',
+      axiom: '#6b7280',
     };
     return colors[category] || '#95a5a6';
+  };
+
+  // Format candidate item for display
+  const formatCandidateItem = (item: any): string => {
+    if (!item) return '-';
+
+    // Try to extract meaningful info from the candidate
+    const parts: string[] = [];
+
+    for (const [key, value] of Object.entries(item)) {
+      if (value === null || value === undefined) continue;
+
+      // Handle Neo4j node objects
+      if (typeof value === 'object' && value !== null) {
+        const nodeObj = value as any;
+        if (nodeObj.properties) {
+          const name = nodeObj.properties.name || nodeObj.properties.equipmentId || nodeObj.properties.sensorId;
+          const labels = nodeObj.labels?.join(':') || '';
+          parts.push(`${key}: ${labels ? `(${labels}) ` : ''}${name || JSON.stringify(nodeObj.properties).slice(0, 50)}`);
+        } else {
+          parts.push(`${key}: ${JSON.stringify(value).slice(0, 50)}`);
+        }
+      } else {
+        parts.push(`${key}: ${value}`);
+      }
+    }
+
+    return parts.join(' | ') || JSON.stringify(item).slice(0, 100);
   };
 
   if (loading) {
@@ -1038,30 +1136,34 @@ const OntologyExplorer: React.FC = () => {
       <h1 className="page-title">Ontology Explorer</h1>
 
       {/* Tab Navigation */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.75rem' }}>
         <button
-          className={`btn ${activeTab === 'graph' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setActiveTab('graph')}
+          className={`btn ${activeTab === 'main' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('main')}
+          style={{ fontWeight: activeTab === 'main' ? 600 : 400 }}
         >
-          Graph View
+          지식 그래프 & 추론
         </button>
         <button
           className={`btn ${activeTab === 'query' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('query')}
+          style={{ fontWeight: activeTab === 'query' ? 600 : 400 }}
         >
           Cypher Query
         </button>
         <button
           className={`btn ${activeTab === 'hierarchy' ? 'btn-primary' : 'btn-secondary'}`}
           onClick={() => setActiveTab('hierarchy')}
+          style={{ fontWeight: activeTab === 'hierarchy' ? 600 : 400 }}
         >
           Class Hierarchy
         </button>
         <button
-          className={`btn ${activeTab === 'reasoning' ? 'btn-primary' : 'btn-secondary'}`}
-          onClick={() => setActiveTab('reasoning')}
+          className={`btn ${activeTab === 'axioms' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('axioms')}
+          style={{ fontWeight: activeTab === 'axioms' ? 600 : 400 }}
         >
-          추론
+          공리 & 제약조건
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
           <button className="btn btn-secondary" onClick={() => handleExport('json')}>
@@ -1093,8 +1195,9 @@ const OntologyExplorer: React.FC = () => {
         </div>
       </div>
 
-      {/* Graph View Tab */}
-      {activeTab === 'graph' && (
+      {/* Main Tab - Graph + Reasoning */}
+      {activeTab === 'main' && (
+        <>
         <div style={{ display: 'grid', gridTemplateColumns: showFilters ? '280px 1fr' : '1fr', gap: '1.5rem' }}>
           {/* Left Sidebar */}
           {showFilters && (
@@ -1155,27 +1258,53 @@ const OntologyExplorer: React.FC = () => {
               {/* Node Type Filters */}
               <div className="card">
                 <h2 className="card-title">Node Types</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  {Object.entries(NODE_COLORS).map(([type, color]) => (
-                    <label
-                      key={type}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleNodeTypes.has(type)}
-                        onChange={() => toggleNodeType(type)}
-                      />
-                      <div
-                        style={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: '50%',
-                          backgroundColor: color,
-                        }}
-                      />
-                      <span style={{ textTransform: 'capitalize', fontSize: '0.875rem' }}>{type}</span>
-                    </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                  {Object.entries(NODE_TYPE_GROUPS).map(([groupKey, group]) => (
+                    <div key={groupKey}>
+                      <div style={{
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        color: groupKey === 'axiomConstraint' ? '#8e44ad' : '#2d3748',
+                        marginBottom: '0.375rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.375rem'
+                      }}>
+                        {groupKey === 'axiomConstraint' && (
+                          <span style={{ fontSize: '0.625rem' }}>🔷</span>
+                        )}
+                        {group.label}
+                      </div>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.25rem',
+                        paddingLeft: '0.5rem',
+                        borderLeft: groupKey === 'axiomConstraint' ? '2px solid #8e44ad' : '2px solid #e2e8f0'
+                      }}>
+                        {group.types.filter(type => NODE_COLORS[type]).map((type) => (
+                          <label
+                            key={type}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={visibleNodeTypes.has(type)}
+                              onChange={() => toggleNodeType(type)}
+                            />
+                            <div
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: '50%',
+                                backgroundColor: NODE_COLORS[type],
+                              }}
+                            />
+                            <span style={{ textTransform: 'capitalize', fontSize: '0.875rem' }}>{type}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1183,21 +1312,92 @@ const OntologyExplorer: React.FC = () => {
               {/* Relationship Type Filters */}
               <div className="card">
                 <h2 className="card-title">Relationship Types</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', maxHeight: '150px', overflow: 'auto' }}>
-                  {relationshipTypes.map(({ type, count }) => (
-                    <label
-                      key={type}
-                      style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={visibleRelTypes.has(type)}
-                        onChange={() => toggleRelType(type)}
-                      />
-                      <span style={{ fontSize: '0.875rem' }}>{type}</span>
-                      <span style={{ color: '#718096', fontSize: '0.75rem' }}>({count})</span>
-                    </label>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '250px', overflow: 'auto' }}>
+                  {/* General Data Relationships */}
+                  {(() => {
+                    const generalRels = relationshipTypes.filter(
+                      ({ type }) => !AXIOM_CONSTRAINT_REL_PATTERNS.some(pattern => type.toUpperCase().includes(pattern))
+                    );
+                    const axiomRels = relationshipTypes.filter(
+                      ({ type }) => AXIOM_CONSTRAINT_REL_PATTERNS.some(pattern => type.toUpperCase().includes(pattern))
+                    );
+                    return (
+                      <>
+                        {generalRels.length > 0 && (
+                          <div>
+                            <div style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#2d3748',
+                              marginBottom: '0.375rem'
+                            }}>
+                              일반 데이터
+                            </div>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.25rem',
+                              paddingLeft: '0.5rem',
+                              borderLeft: '2px solid #e2e8f0'
+                            }}>
+                              {generalRels.map(({ type, count }) => (
+                                <label
+                                  key={type}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={visibleRelTypes.has(type)}
+                                    onChange={() => toggleRelType(type)}
+                                  />
+                                  <span style={{ fontSize: '0.875rem' }}>{type}</span>
+                                  <span style={{ color: '#718096', fontSize: '0.75rem' }}>({count})</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {axiomRels.length > 0 && (
+                          <div>
+                            <div style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: '#8e44ad',
+                              marginBottom: '0.375rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.375rem'
+                            }}>
+                              <span style={{ fontSize: '0.625rem' }}>🔷</span>
+                              공리/제약조건
+                            </div>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.25rem',
+                              paddingLeft: '0.5rem',
+                              borderLeft: '2px solid #8e44ad'
+                            }}>
+                              {axiomRels.map(({ type, count }) => (
+                                <label
+                                  key={type}
+                                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={visibleRelTypes.has(type)}
+                                    onChange={() => toggleRelType(type)}
+                                  />
+                                  <span style={{ fontSize: '0.875rem' }}>{type}</span>
+                                  <span style={{ color: '#718096', fontSize: '0.75rem' }}>({count})</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1552,6 +1752,203 @@ const OntologyExplorer: React.FC = () => {
             )}
           </div>
         </div>
+
+        {/* Reasoning Section - 추론 엔진 */}
+        <div style={{ marginTop: '2rem' }}>
+          {/* Section Divider */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            marginBottom: '1.5rem',
+            paddingTop: '1.5rem',
+            borderTop: '2px solid #e2e8f0'
+          }}>
+            <h2 style={{
+              margin: 0,
+              fontSize: '1.25rem',
+              fontWeight: 600,
+              color: '#2d3748',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem'
+            }}>
+              <span style={{ fontSize: '1.5rem' }}>🧠</span> 추론 엔진
+            </h2>
+            <div style={{ flex: 1, height: '1px', backgroundColor: '#e2e8f0' }} />
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                className="btn btn-primary"
+                onClick={handleRunAllRules}
+                disabled={isRunningReasoning}
+                style={{ fontSize: '0.875rem' }}
+              >
+                {isRunningReasoning ? '실행 중...' : '전체 추론 실행'}
+              </button>
+              <button
+                className="btn"
+                onClick={handleClearInferred}
+                disabled={isRunningReasoning}
+                style={{ backgroundColor: '#e53e3e', color: 'white', fontSize: '0.875rem' }}
+              >
+                추론 결과 삭제
+              </button>
+            </div>
+          </div>
+
+          {/* Reasoning Stats */}
+          <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+              <div className="stat-value">{inferenceRules.length}</div>
+              <div className="stat-label" style={{ color: 'rgba(255,255,255,0.9)' }}>추론 규칙</div>
+            </div>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+              <div className="stat-value">{reasoningStats?.totalInferredNodes || 0}</div>
+              <div className="stat-label" style={{ color: 'rgba(255,255,255,0.9)' }}>추론된 노드</div>
+            </div>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+              <div className="stat-value">{reasoningStats?.totalInferredRelationships || 0}</div>
+              <div className="stat-label" style={{ color: 'rgba(255,255,255,0.9)' }}>추론된 관계</div>
+            </div>
+            <div className="stat-card" style={{ background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'white' }}>
+              <div className="stat-value">
+                {(reasoningStats?.totalInferredNodes || 0) + (reasoningStats?.totalInferredRelationships || 0)}
+              </div>
+              <div className="stat-label" style={{ color: 'rgba(255,255,255,0.9)' }}>총 추론 결과</div>
+            </div>
+          </div>
+
+          {/* Message Display */}
+          {reasoningMessage && (
+            <div
+              style={{
+                padding: '0.75rem 1rem',
+                marginBottom: '1rem',
+                backgroundColor: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#fed7d7' : '#c6f6d5',
+                color: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#c53030' : '#276749',
+                borderRadius: '8px',
+                fontSize: '0.875rem',
+                fontWeight: 500,
+              }}
+            >
+              {reasoningMessage}
+            </div>
+          )}
+
+          {/* Inference Rules Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '1rem' }}>
+            {inferenceRules.map((rule) => {
+              const isAxiomRule = rule.category === '공리' || rule.category === 'axiom';
+              return (
+              <div
+                key={rule.id}
+                style={{
+                  padding: '1.25rem',
+                  backgroundColor: selectedRule === rule.id ? '#ebf8ff' : (isAxiomRule ? '#f8fafc' : 'white'),
+                  borderRadius: '12px',
+                  border: selectedRule === rule.id
+                    ? '2px solid #3182ce'
+                    : (isAxiomRule ? '2px solid #3b82f6' : '1px solid #e2e8f0'),
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.04)',
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                      <span style={{ fontWeight: 600, fontSize: '1rem', color: '#2d3748' }}>{rule.name}</span>
+                      <span
+                        style={{
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          backgroundColor: getCategoryColor(rule.category),
+                          color: 'white',
+                          fontSize: '0.7rem',
+                          fontWeight: 500,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {rule.category}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.875rem', color: '#718096', lineHeight: 1.5 }}>{rule.description}</div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => handleCheckRule(rule.id)}
+                    disabled={isRunningReasoning || isLoadingTrace}
+                    style={{ fontSize: '0.8rem' }}
+                  >
+                    확인
+                  </button>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    onClick={() => handleApplyRule(rule.id)}
+                    disabled={isRunningReasoning || isLoadingTrace}
+                    style={{ fontSize: '0.8rem' }}
+                  >
+                    적용
+                  </button>
+                  <button
+                    className="btn btn-sm"
+                    onClick={() => handleRunWithTrace(rule.id)}
+                    disabled={isRunningReasoning || isLoadingTrace}
+                    style={{ backgroundColor: '#9b59b6', color: 'white', fontSize: '0.8rem' }}
+                  >
+                    {isLoadingTrace ? '분석 중...' : '추론 과정'}
+                  </button>
+                </div>
+              </div>
+            );
+            })}
+          </div>
+
+          {/* Rule Check Result */}
+          {ruleCheckResult && (
+            <div
+              className="card"
+              style={{
+                marginTop: '1.5rem',
+                backgroundColor: '#f0fff4',
+                border: '1px solid #9ae6b4'
+              }}
+            >
+              <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', color: '#276749' }}>
+                규칙 확인 결과: {ruleCheckResult.count ?? 0}개 추론 가능
+                {ruleCheckResult.rule && (
+                  <span style={{ fontWeight: 400, fontSize: '0.875rem', marginLeft: '0.5rem', color: '#718096' }}>
+                    ({ruleCheckResult.rule.name})
+                  </span>
+                )}
+              </h3>
+              {ruleCheckResult.candidates && ruleCheckResult.candidates.length > 0 && (
+                <div style={{ fontSize: '0.875rem' }}>
+                  <div style={{ fontWeight: 500, marginBottom: '0.5rem', color: '#2f855a' }}>미리보기 (최대 5개):</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {ruleCheckResult.candidates.slice(0, 5).map((item: any, i: number) => (
+                      <div key={i} style={{ padding: '0.5rem', backgroundColor: 'white', borderRadius: '4px', fontSize: '0.8rem', fontFamily: 'monospace' }}>
+                        {formatCandidateItem(item)}
+                      </div>
+                    ))}
+                    {ruleCheckResult.candidates.length > 5 && (
+                      <div style={{ fontSize: '0.75rem', color: '#718096', marginTop: '0.25rem' }}>
+                        ... 외 {ruleCheckResult.candidates.length - 5}개 더 있음
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {ruleCheckResult.count === 0 && (
+                <div style={{ fontSize: '0.875rem', color: '#718096' }}>
+                  현재 조건에 맞는 데이터가 없습니다.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        </>
       )}
 
       {/* Cypher Query Tab */}
@@ -1697,974 +2094,468 @@ const OntologyExplorer: React.FC = () => {
         </div>
       )}
 
-      {/* Reasoning Tab */}
-      {activeTab === 'reasoning' && (
-        <div>
-          {/* Test Data Panel */}
-          <div className="card" style={{ marginBottom: '1.5rem', backgroundColor: '#fefcbf', border: '1px solid #f6e05e' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h2 className="card-title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span>🧪</span> 테스트 시나리오
-              </h2>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleLoadAllTestData}
-                  disabled={isLoadingTestData}
-                >
-                  {isLoadingTestData ? '로딩 중...' : '전체 시나리오 로드'}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={handleResetTestData}
-                  disabled={isLoadingTestData}
-                >
-                  데이터 초기화
-                </button>
-                <button
-                  className="btn"
-                  onClick={handleClearTestInferred}
-                  disabled={isLoadingTestData}
-                  style={{ backgroundColor: '#ed8936', color: 'white' }}
-                >
-                  추론 결과만 삭제
-                </button>
+      {/* Axioms & Constraints Tab */}
+      {activeTab === 'axioms' && (
+        <div className="card">
+          <h2 className="card-title">공리 및 제약조건</h2>
+          <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1.5rem' }}>
+            온톨로지의 구조적 공리와 데이터 제약조건을 검증하고 추론 기반을 확인합니다.
+          </p>
+
+          {/* Stats Cards */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem', marginBottom: '1.5rem' }}>
+            <div style={{
+              padding: '1rem',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderRadius: '8px',
+              color: 'white'
+            }}>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>공리 (Axioms)</div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem' }}>
+                {axioms.length}
               </div>
             </div>
-
-            {/* Test Data Message */}
-            {testDataMessage && (
-              <div
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  marginBottom: '1rem',
-                  backgroundColor: testDataMessage.includes('실패') ? '#fed7d7' : '#c6f6d5',
-                  color: testDataMessage.includes('실패') ? '#c53030' : '#276749',
-                  borderRadius: '4px',
-                  fontSize: '0.875rem',
-                }}
-              >
-                {testDataMessage}
+            <div style={{
+              padding: '1rem',
+              background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+              borderRadius: '8px',
+              color: 'white'
+            }}>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>제약조건 (Constraints)</div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem' }}>
+                {constraints.length}
               </div>
-            )}
-
-            {/* Test Data Status */}
-            {testDataStatus && (
-              <div style={{ marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'white', borderRadius: '6px', fontSize: '0.8rem' }}>
-                <strong>현재 데이터 상태:</strong>{' '}
-                저건강 설비 {testDataStatus.dataStatus.lowHealthEquipment}개 |{' '}
-                이상 관측값 {testDataStatus.dataStatus.anomalyObservations}개 |{' '}
-                트렌딩 관측값 {testDataStatus.dataStatus.trendingObservations}개 |{' '}
-                테스트 설비 {testDataStatus.dataStatus.testEquipment}개 |{' '}
-                Flow 센서 {testDataStatus.dataStatus.flowSensors}개 |{' '}
-                추론 노드 {testDataStatus.dataStatus.inferredNodes}개 |{' '}
-                추론 관계 {testDataStatus.dataStatus.inferredRelationships}개
+            </div>
+            <div style={{
+              padding: '1rem',
+              background: axiomResults && axiomResults.totalViolations > 0
+                ? 'linear-gradient(135deg, #fa709a 0%, #fee140 100%)'
+                : 'linear-gradient(135deg, #30cfd0 0%, #330867 100%)',
+              borderRadius: '8px',
+              color: 'white'
+            }}>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>공리 위반</div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem' }}>
+                {axiomResults?.totalViolations || 0}
               </div>
-            )}
-
-            {/* Scenario List */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '0.75rem' }}>
-              {testScenarios.map((scenario) => {
-                const isLoaded = getScenarioStatus(scenario.id);
-                return (
-                  <div
-                    key={scenario.id}
-                    style={{
-                      padding: '0.75rem',
-                      backgroundColor: isLoaded ? '#c6f6d5' : 'white',
-                      borderRadius: '6px',
-                      border: isLoaded ? '1px solid #68d391' : '1px solid #e2e8f0',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.875rem' }}>
-                            {isLoaded ? '✅' : '⬜'} {scenario.name}
-                          </span>
-                          <span
-                            style={{
-                              padding: '1px 6px',
-                              borderRadius: '3px',
-                              backgroundColor: '#667eea',
-                              color: 'white',
-                              fontSize: '0.65rem',
-                            }}
-                          >
-                            {scenario.targetRule}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: '#4a5568', marginBottom: '0.25rem' }}>
-                          {scenario.description}
-                        </div>
-                        <div style={{ fontSize: '0.7rem', color: '#718096' }}>
-                          예상 결과: {scenario.expectedResult}
-                        </div>
-                      </div>
-                      <button
-                        className="btn btn-sm"
-                        onClick={() => handleLoadScenario(scenario.id)}
-                        disabled={isLoadingTestData || isLoaded}
-                        style={{
-                          fontSize: '0.7rem',
-                          padding: '0.25rem 0.5rem',
-                          backgroundColor: isLoaded ? '#a0aec0' : '#4299e1',
-                          color: 'white',
-                        }}
-                      >
-                        {isLoaded ? '로드됨' : '로드'}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
-
-            <p style={{ fontSize: '0.75rem', color: '#744210', marginTop: '1rem', marginBottom: 0 }}>
-              💡 테스트 시나리오를 로드한 후 아래 추론 규칙의 "추론 과정 보기" 버튼을 클릭하면 실제 추론 과정을 확인할 수 있습니다.
-            </p>
-          </div>
-
-          {/* Reasoning Stats */}
-          <div className="grid-4" style={{ marginBottom: '1.5rem' }}>
-            <div className="stat-card">
-              <div className="stat-value">{inferenceRules.length}</div>
-              <div className="stat-label">추론 규칙 수</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{reasoningStats?.totalInferredNodes || 0}</div>
-              <div className="stat-label">추론된 노드</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">{reasoningStats?.totalInferredRelationships || 0}</div>
-              <div className="stat-label">추론된 관계</div>
-            </div>
-            <div className="stat-card">
-              <div className="stat-value">
-                {(reasoningStats?.totalInferredNodes || 0) + (reasoningStats?.totalInferredRelationships || 0)}
+            <div style={{
+              padding: '1rem',
+              background: constraintResults && constraintResults.totalViolations > 0
+                ? 'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)'
+                : 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+              borderRadius: '8px',
+              color: constraintResults && constraintResults.totalViolations > 0 ? '#2d3748' : 'white'
+            }}>
+              <div style={{ fontSize: '0.875rem', opacity: 0.9 }}>제약조건 위반</div>
+              <div style={{ fontSize: '2rem', fontWeight: 700, marginTop: '0.5rem' }}>
+                {constraintResults?.totalViolations || 0}
               </div>
-              <div className="stat-label">총 추론 결과</div>
             </div>
           </div>
 
-          {/* Message Display */}
-          {reasoningMessage && (
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+            <button
+              className="btn btn-primary"
+              onClick={async () => {
+                setIsCheckingAxioms(true);
+                try {
+                  const response = await axiomApi.checkAll();
+                  if (response.data) {
+                    setAxiomResults(response.data);
+                  }
+                } catch (error) {
+                  console.error('Failed to check axioms:', error);
+                } finally {
+                  setIsCheckingAxioms(false);
+                }
+              }}
+              disabled={isCheckingAxioms}
+            >
+              {isCheckingAxioms ? '검증 중...' : '공리 검증'}
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={async () => {
+                setIsValidatingConstraints(true);
+                try {
+                  const response = await constraintApi.validateAll();
+                  if (response.data) {
+                    setConstraintResults(response.data);
+                  }
+                } catch (error) {
+                  console.error('Failed to validate constraints:', error);
+                } finally {
+                  setIsValidatingConstraints(false);
+                }
+              }}
+              disabled={isValidatingConstraints}
+            >
+              {isValidatingConstraints ? '검증 중...' : '제약조건 검증'}
+            </button>
+            <button
+              className="btn btn-success"
+              onClick={async () => {
+                setIsCheckingAxioms(true);
+                setIsValidatingConstraints(true);
+                try {
+                  const [axiomResponse, constraintResponse] = await Promise.all([
+                    axiomApi.checkAll(),
+                    constraintApi.validateAll()
+                  ]);
+                  if (axiomResponse.data) setAxiomResults(axiomResponse.data);
+                  if (constraintResponse.data) setConstraintResults(constraintResponse.data);
+                } catch (error) {
+                  console.error('Failed to validate:', error);
+                } finally {
+                  setIsCheckingAxioms(false);
+                  setIsValidatingConstraints(false);
+                }
+              }}
+              disabled={isCheckingAxioms || isValidatingConstraints}
+            >
+              전체 검증
+            </button>
+          </div>
+
+          {/* Axioms Section */}
+          <div style={{ marginBottom: '2rem' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '0.5rem' }}>📜</span>
+              공리 (Axioms)
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' }}>
+              {axioms.map((axiom) => (
+                <AxiomViewer
+                  key={axiom.axiomId}
+                  axiom={axiom}
+                  isLoading={checkingAxiomId === axiom.axiomId}
+                  checkResult={individualAxiomResults[axiom.axiomId] || null}
+                  onCheck={async (axiomId: string) => {
+                    setCheckingAxiomId(axiomId);
+                    try {
+                      const response = await axiomApi.check(axiomId);
+                      if (response.status === 'success' && response.data?.result) {
+                        const result = response.data.result;
+                        setIndividualAxiomResults(prev => ({
+                          ...prev,
+                          [axiomId]: {
+                            passed: result.passed,
+                            violationCount: result.violationCount,
+                            violations: result.violations,
+                            checkedAt: result.checkedAt
+                          }
+                        }));
+                      }
+                    } catch (error) {
+                      console.error('Failed to check axiom:', error);
+                    } finally {
+                      setCheckingAxiomId(null);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Constraints Section */}
+          <div style={{ marginBottom: '2rem' }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center' }}>
+              <span style={{ marginRight: '0.5rem' }}>🔒</span>
+              제약조건 (Constraints)
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '1rem' }}>
+              {constraints.map((constraint) => (
+                <ConstraintViewer
+                  key={constraint.constraintId}
+                  constraint={constraint}
+                  isLoading={checkingConstraintId === constraint.constraintId}
+                  checkResult={individualConstraintResults[constraint.constraintId] || null}
+                  onValidate={async (constraintId: string) => {
+                    setCheckingConstraintId(constraintId);
+                    try {
+                      const response = await constraintApi.validate(constraintId);
+                      if (response.status === 'success' && response.data?.result) {
+                        const result = response.data.result;
+                        setIndividualConstraintResults(prev => ({
+                          ...prev,
+                          [constraintId]: {
+                            passed: result.passed,
+                            violationCount: result.violationCount,
+                            violations: result.violations,
+                            checkedAt: result.checkedAt
+                          }
+                        }));
+                      }
+                    } catch (error) {
+                      console.error('Failed to validate constraint:', error);
+                    } finally {
+                      setCheckingConstraintId(null);
+                    }
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Violation Results */}
+          {(axiomResults || constraintResults) && (
+            <ViolationPanel
+              axiomResults={axiomResults}
+              constraintResults={constraintResults}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Reasoning Trace Modal */}
+        {showTraceModal && reasoningTrace && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+            }}
+            onClick={() => setShowTraceModal(false)}
+          >
             <div
               style={{
-                padding: '0.75rem 1rem',
-                marginBottom: '1rem',
-                backgroundColor: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#fed7d7' : '#c6f6d5',
-                color: reasoningMessage.includes('Failed') || reasoningMessage.includes('실패') ? '#c53030' : '#276749',
-                borderRadius: '6px',
-                fontSize: '0.875rem',
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                width: '90%',
+                maxWidth: '900px',
+                maxHeight: '85vh',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
               }}
+              onClick={(e) => e.stopPropagation()}
             >
-              {reasoningMessage}
-            </div>
-          )}
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem' }}>
-            {/* Inference Rules */}
-            <div className="card">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                <h2 className="card-title" style={{ marginBottom: 0 }}>추론 규칙</h2>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleRunAllRules}
-                    disabled={isRunningReasoning}
+              {/* Modal Header */}
+              <div
+                style={{
+                  padding: '1rem 1.5rem',
+                  borderBottom: '1px solid #e2e8f0',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  backgroundColor: '#f7fafc',
+                }}
+              >
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
+                    추론 과정 분석
+                  </h2>
+                  <div style={{ fontSize: '0.875rem', color: '#718096', marginTop: '0.25rem' }}>
+                    {reasoningTrace.ruleName}
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span
+                    style={{
+                      padding: '4px 12px',
+                      borderRadius: '9999px',
+                      fontSize: '0.875rem',
+                      fontWeight: 500,
+                      backgroundColor: getResultBadgeStyle(reasoningTrace.result).bgColor,
+                      color: getResultBadgeStyle(reasoningTrace.result).color,
+                    }}
                   >
-                    {isRunningReasoning ? '실행 중...' : '전체 규칙 실행'}
-                  </button>
+                    {getResultBadgeStyle(reasoningTrace.result).text}
+                  </span>
                   <button
-                    className="btn btn-secondary"
-                    onClick={handleClearInferred}
-                    disabled={isRunningReasoning}
-                    style={{ backgroundColor: '#e53e3e', color: 'white' }}
+                    onClick={() => setShowTraceModal(false)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      fontSize: '1.5rem',
+                      cursor: 'pointer',
+                      color: '#718096',
+                    }}
                   >
-                    추론 결과 삭제
+                    ×
                   </button>
                 </div>
               </div>
 
-              <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
-                기존 데이터에서 새로운 지식을 추론하는 규칙 기반 추론 엔진입니다.
-              </p>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {inferenceRules.map((rule) => (
-                  <div
-                    key={rule.id}
-                    style={{
-                      padding: '1rem',
-                      backgroundColor: selectedRule === rule.id ? '#ebf8ff' : '#f7fafc',
-                      borderRadius: '8px',
-                      border: selectedRule === rule.id ? '2px solid #3182ce' : '1px solid #e2e8f0',
-                    }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
-                          <button
-                            onClick={() => setExpandedRule(expandedRule === rule.id ? null : rule.id)}
-                            style={{
-                              background: 'none',
-                              border: 'none',
-                              cursor: 'pointer',
-                              padding: '0',
-                              fontSize: '0.875rem',
-                              color: '#4a5568',
-                            }}
-                          >
-                            {expandedRule === rule.id ? '▼' : '▶'}
-                          </button>
-                          <span style={{ fontWeight: 600 }}>{rule.name}</span>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              backgroundColor: getCategoryColor(rule.category),
-                              color: 'white',
-                              fontSize: '0.7rem',
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            {rule.category}
-                          </span>
-                        </div>
-                        <div style={{ fontSize: '0.875rem', color: '#718096', marginLeft: '1.25rem' }}>{rule.description}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => handleCheckRule(rule.id)}
-                          disabled={isRunningReasoning || isLoadingTrace}
-                        >
-                          확인
-                        </button>
-                        <button
-                          className="btn btn-sm btn-primary"
-                          onClick={() => handleApplyRule(rule.id)}
-                          disabled={isRunningReasoning || isLoadingTrace}
-                        >
-                          적용
-                        </button>
-                        <button
-                          className="btn btn-sm"
-                          onClick={() => handleRunWithTrace(rule.id)}
-                          disabled={isRunningReasoning || isLoadingTrace}
-                          style={{ backgroundColor: '#9b59b6', color: 'white' }}
-                        >
-                          {isLoadingTrace ? '분석 중...' : '추론 과정 보기'}
-                        </button>
-                      </div>
+              {/* Modal Body */}
+              <div style={{ flex: 1, overflow: 'auto', padding: '1.5rem' }}>
+                {/* Summary */}
+                <div
+                  style={{
+                    padding: '1rem',
+                    backgroundColor: '#f0fff4',
+                    borderRadius: '8px',
+                    marginBottom: '1.5rem',
+                    border: '1px solid #9ae6b4',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#276749' }}>
+                    📋 추론 결과 요약
+                  </div>
+                  <div style={{ fontSize: '0.9rem', color: '#2d3748' }}>
+                    {reasoningTrace.summary}
+                  </div>
+                  {reasoningTrace.inferredCount > 0 && (
+                    <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#276749' }}>
+                      새로 추론된 지식: <strong>{reasoningTrace.inferredCount}건</strong>
                     </div>
+                  )}
+                </div>
 
-                    {/* Rule Details (Expanded) */}
-                    {expandedRule === rule.id && (
-                      <div
-                        style={{
-                          marginTop: '0.75rem',
-                          marginLeft: '1.25rem',
-                          padding: '0.75rem',
-                          backgroundColor: 'white',
-                          borderRadius: '6px',
-                          border: '1px solid #e2e8f0',
-                        }}
-                      >
-                        <div style={{ marginBottom: '0.75rem' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
-                            📋 조건 (Condition)
-                          </div>
-                          <div style={{ fontSize: '0.875rem', color: '#2d3748', backgroundColor: '#edf2f7', padding: '0.5rem', borderRadius: '4px' }}>
-                            {rule.condition || '조건 정보 없음'}
-                          </div>
-                        </div>
+                {/* Timeline Steps */}
+                <div style={{ marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                    🔄 추론 단계 ({reasoningTrace.steps.length}단계)
+                  </h3>
+                  <div style={{ position: 'relative' }}>
+                    {reasoningTrace.steps.map((step, index) => {
+                      const stepStyle = getStepTypeStyle(step.type);
+                      const isExpanded = expandedSteps.has(step.stepNumber);
 
-                        <div style={{ marginBottom: '0.75rem' }}>
-                          <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
-                            🔄 추론 과정 (Inference)
+                      return (
+                        <div
+                          key={step.stepNumber}
+                          style={{
+                            position: 'relative',
+                            paddingLeft: '50px',
+                            marginBottom: '1rem',
+                          }}
+                        >
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: '8px',
+                              top: '4px',
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '50%',
+                              backgroundColor: stepStyle.bgColor,
+                              border: `2px solid ${stepStyle.color}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: '0.9rem',
+                              zIndex: 1,
+                            }}
+                          >
+                            {stepStyle.icon}
                           </div>
-                          <div style={{ fontSize: '0.875rem', color: '#2d3748', backgroundColor: '#e6fffa', padding: '0.5rem', borderRadius: '4px' }}>
-                            {rule.inference || '추론 과정 정보 없음'}
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
-                              📥 입력 데이터
-                            </div>
-                            <div style={{ fontSize: '0.8rem', color: '#2d3748' }}>
-                              {rule.inputData && rule.inputData.length > 0 ? (
-                                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                                  {rule.inputData.map((item, i) => (
-                                    <li key={i}>{item}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <span style={{ color: '#a0aec0' }}>없음</span>
-                              )}
-                            </div>
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '0.75rem', color: '#4a5568', fontWeight: 600, marginBottom: '0.25rem' }}>
-                              📤 출력 데이터
-                            </div>
-                            <div style={{ fontSize: '0.8rem', color: '#2d3748' }}>
-                              {rule.outputData && rule.outputData.length > 0 ? (
-                                <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                                  {rule.outputData.map((item, i) => (
-                                    <li key={i}>{item}</li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <span style={{ color: '#a0aec0' }}>없음</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Rule Check Result */}
-                    {selectedRule === rule.id && ruleCheckResult && (
-                      <div
-                        style={{
-                          marginTop: '0.75rem',
-                          marginLeft: '1.25rem',
-                          padding: '0.75rem',
-                          backgroundColor: '#fffaf0',
-                          borderRadius: '6px',
-                          border: '1px solid #ed8936',
-                        }}
-                      >
-                        <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#c05621' }}>
-                          🔍 추론 대상 확인 결과: {ruleCheckResult.count || 0}건
-                        </div>
-                        {ruleCheckResult.candidates && ruleCheckResult.candidates.length > 0 ? (
-                          <div style={{ maxHeight: '200px', overflow: 'auto' }}>
-                            {ruleCheckResult.candidates.slice(0, 10).map((candidate: any, i: number) => (
-                              <div
-                                key={i}
-                                style={{
-                                  padding: '0.5rem',
-                                  marginBottom: '0.5rem',
-                                  backgroundColor: 'white',
-                                  borderRadius: '4px',
-                                  fontSize: '0.8rem',
-                                }}
-                              >
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                  {Object.entries(candidate).map(([key, value]) => (
-                                    <span key={key} style={{ backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '3px' }}>
-                                      <strong>{key}:</strong> {String(value)}
+                          <div
+                            style={{
+                              backgroundColor: stepStyle.bgColor,
+                              borderRadius: '8px',
+                              border: `1px solid ${stepStyle.color}30`,
+                              overflow: 'hidden',
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: '0.75rem 1rem',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                              }}
+                              onClick={() => toggleStepExpansion(step.stepNumber)}
+                            >
+                              <div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontSize: '0.7rem', fontWeight: 600, color: stepStyle.color, textTransform: 'uppercase' }}>
+                                    Step {step.stepNumber}: {step.type}
+                                  </span>
+                                  {step.dataCount > 0 && (
+                                    <span style={{ padding: '2px 6px', backgroundColor: stepStyle.color, color: 'white', borderRadius: '4px', fontSize: '0.7rem' }}>
+                                      {step.dataCount}건
                                     </span>
+                                  )}
+                                </div>
+                                <div style={{ fontWeight: 500, marginTop: '0.25rem' }}>{step.description}</div>
+                                {step.resultSummary && (
+                                  <div style={{ fontSize: '0.875rem', color: '#4a5568', marginTop: '0.25rem' }}>→ {step.resultSummary}</div>
+                                )}
+                              </div>
+                              <span style={{ fontSize: '0.875rem', color: '#718096' }}>{isExpanded ? '▲' : '▼'}</span>
+                            </div>
+                            {isExpanded && step.data && step.data.length > 0 && (
+                              <div style={{ padding: '0.75rem 1rem', borderTop: `1px solid ${stepStyle.color}30`, backgroundColor: 'white' }}>
+                                <div style={{ maxHeight: '150px', overflow: 'auto', backgroundColor: '#f7fafc', borderRadius: '4px', padding: '0.5rem' }}>
+                                  {step.data.slice(0, 5).map((item, i) => (
+                                    <div key={i} style={{ padding: '0.5rem', marginBottom: '0.25rem', backgroundColor: 'white', borderRadius: '4px', fontSize: '0.8rem', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                      {Object.entries(item).map(([key, value]) => (
+                                        <span key={key} style={{ padding: '2px 6px', backgroundColor: '#e2e8f0', borderRadius: '3px' }}>
+                                          <strong>{key}:</strong> {String(value)}
+                                        </span>
+                                      ))}
+                                    </div>
                                   ))}
                                 </div>
-                              </div>
-                            ))}
-                            {ruleCheckResult.candidates.length > 10 && (
-                              <div style={{ color: '#718096', marginTop: '0.25rem', fontSize: '0.8rem' }}>
-                                ...외 {ruleCheckResult.candidates.length - 10}건 더 있음
                               </div>
                             )}
                           </div>
-                        ) : (
-                          <div style={{ color: '#718096', fontSize: '0.875rem' }}>
-                            현재 조건에 맞는 추론 대상이 없습니다.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              {/* Run All Results */}
-              {runAllResult && (
-                <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: '#f7fafc', borderRadius: '8px' }}>
-                  <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-                    추론 실행 결과 ({runAllResult.timestamp})
-                  </div>
-                  <div style={{ fontSize: '0.875rem' }}>
-                    총 추론 결과: <strong>{runAllResult.totalInferred}건</strong>
-                  </div>
-                  <div style={{ marginTop: '0.5rem', maxHeight: '150px', overflow: 'auto' }}>
-                    {runAllResult.results?.map((result: any, i: number) => (
-                      <div
-                        key={i}
-                        style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          padding: '0.25rem 0',
-                          fontSize: '0.75rem',
-                          borderBottom: '1px solid #e2e8f0',
-                        }}
-                      >
-                        <span>{result.ruleName}</span>
-                        <span style={{ color: result.count > 0 ? '#276749' : '#718096' }}>
-                          +{result.count}
-                        </span>
-                      </div>
-                    ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* Inferred Facts */}
-            <div className="card">
-              <h2 className="card-title">추론된 지식</h2>
-              <p style={{ fontSize: '0.875rem', color: '#718096', marginBottom: '1rem' }}>
-                추론 엔진에 의해 새롭게 생성된 지식입니다.
-              </p>
+                {/* Evidence Section */}
+                {reasoningTrace.evidence.length > 0 && (
+                  <div>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                      📌 추론 근거 ({reasoningTrace.evidence.length}건)
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '0.75rem' }}>
+                      {reasoningTrace.evidence.map((ev) => (
+                        <div key={ev.id} style={{ padding: '0.75rem', backgroundColor: '#f7fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                            <span style={{ padding: '2px 6px', backgroundColor: ev.type === 'PROPERTY' ? '#3498db' : '#e67e22', color: 'white', borderRadius: '4px', fontSize: '0.7rem' }}>
+                              {ev.type}
+                            </span>
+                            <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{ev.label}</span>
+                          </div>
+                          <div style={{ fontSize: '0.875rem', color: '#2d3748' }}>{ev.description}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {/* Inferred Nodes */}
-              <div style={{ marginBottom: '1.5rem' }}>
-                <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  추론된 노드 ({inferredFacts?.nodeCount || 0})
-                </h3>
-                {inferredFacts && inferredFacts.nodes.length > 0 ? (
-                  <div style={{ maxHeight: '200px', overflow: 'auto' }}>
-                    {inferredFacts.nodes.map((node: any, i: number) => (
-                      <div
-                        key={i}
-                        style={{
-                          padding: '0.5rem',
-                          marginBottom: '0.5rem',
-                          backgroundColor: '#f7fafc',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                          {node.labels?.map((label: string) => (
-                            <span
-                              key={label}
-                              style={{
-                                padding: '2px 6px',
-                                backgroundColor: label === 'Inferred' ? '#9b59b6' : '#3498db',
-                                color: 'white',
-                                borderRadius: '4px',
-                                fontSize: '0.7rem',
-                              }}
-                            >
-                              {label}
+                {/* Inferred Items */}
+                {reasoningTrace.inferredItems.length > 0 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
+                      ✨ 새로 추론된 지식 ({reasoningTrace.inferredItems.length}건)
+                    </h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {reasoningTrace.inferredItems.map((item, i) => (
+                        <div key={i} style={{ padding: '0.75rem', backgroundColor: '#fffaf0', borderRadius: '6px', border: '1px solid #ed8936', display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                          {Object.entries(item).map(([key, value]) => (
+                            <span key={key} style={{ padding: '4px 8px', backgroundColor: '#fed7aa', borderRadius: '4px', fontSize: '0.875rem' }}>
+                              <strong>{key}:</strong> {String(value)}
                             </span>
                           ))}
                         </div>
-                        <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#718096' }}>
-                          {node.properties?.reason || node.properties?.description || JSON.stringify(node.properties).substring(0, 80)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>추론된 노드 없음</div>
-                )}
-              </div>
-
-              {/* Inferred Relationships */}
-              <div>
-                <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-                  추론된 관계 ({inferredFacts?.relationshipCount || 0})
-                </h3>
-                {inferredFacts && inferredFacts.relationships.length > 0 ? (
-                  <div style={{ maxHeight: '200px', overflow: 'auto' }}>
-                    {inferredFacts.relationships.map((rel: any, i: number) => (
-                      <div
-                        key={i}
-                        style={{
-                          padding: '0.5rem',
-                          marginBottom: '0.5rem',
-                          backgroundColor: '#f7fafc',
-                          borderRadius: '4px',
-                          fontSize: '0.875rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                        }}
-                      >
-                        <span style={{ fontWeight: 500 }}>{rel.sourceName || 'Node'}</span>
-                        <span
-                          style={{
-                            padding: '2px 6px',
-                            backgroundColor: '#e67e22',
-                            color: 'white',
-                            borderRadius: '4px',
-                            fontSize: '0.7rem',
-                          }}
-                        >
-                          {rel.type}
-                        </span>
-                        <span style={{ fontWeight: 500 }}>{rel.targetName || 'Node'}</span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={{ color: '#718096', fontSize: '0.875rem' }}>추론된 관계 없음</div>
-                )}
-              </div>
-
-              {/* Stats by Type */}
-              {reasoningStats && (reasoningStats.nodesByType.length > 0 || reasoningStats.relationshipsByType.length > 0) && (
-                <div style={{ marginTop: '1.5rem' }}>
-                  <h3 style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: '0.5rem' }}>유형별 통계</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>노드</div>
-                      {reasoningStats.nodesByType.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                          <span>{item.label}</span>
-                          <span style={{ fontWeight: 500 }}>{item.count}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>관계</div>
-                      {reasoningStats.relationshipsByType.map((item, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem' }}>
-                          <span>{item.type}</span>
-                          <span style={{ fontWeight: 500 }}>{item.count}</span>
-                        </div>
                       ))}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+
+              {/* Modal Footer */}
+              <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end', backgroundColor: '#f7fafc' }}>
+                <button className="btn btn-secondary" onClick={() => setShowTraceModal(false)}>닫기</button>
+              </div>
             </div>
           </div>
-
-          {/* Reasoning Trace Modal */}
-          {showTraceModal && reasoningTrace && (
-            <div
-              style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 10000,
-              }}
-              onClick={() => setShowTraceModal(false)}
-            >
-              <div
-                style={{
-                  backgroundColor: 'white',
-                  borderRadius: '12px',
-                  width: '90%',
-                  maxWidth: '900px',
-                  maxHeight: '85vh',
-                  overflow: 'hidden',
-                  display: 'flex',
-                  flexDirection: 'column',
-                }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Modal Header */}
-                <div
-                  style={{
-                    padding: '1rem 1.5rem',
-                    borderBottom: '1px solid #e2e8f0',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    backgroundColor: '#f7fafc',
-                  }}
-                >
-                  <div>
-                    <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600 }}>
-                      추론 과정 분석
-                    </h2>
-                    <div style={{ fontSize: '0.875rem', color: '#718096', marginTop: '0.25rem' }}>
-                      {reasoningTrace.ruleName}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <span
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: '9999px',
-                        fontSize: '0.875rem',
-                        fontWeight: 500,
-                        backgroundColor: getResultBadgeStyle(reasoningTrace.result).bgColor,
-                        color: getResultBadgeStyle(reasoningTrace.result).color,
-                      }}
-                    >
-                      {getResultBadgeStyle(reasoningTrace.result).text}
-                    </span>
-                    <button
-                      onClick={() => setShowTraceModal(false)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        fontSize: '1.5rem',
-                        cursor: 'pointer',
-                        color: '#718096',
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                </div>
-
-                {/* Modal Body */}
-                <div style={{ flex: 1, overflow: 'auto', padding: '1.5rem' }}>
-                  {/* Summary */}
-                  <div
-                    style={{
-                      padding: '1rem',
-                      backgroundColor: '#f0fff4',
-                      borderRadius: '8px',
-                      marginBottom: '1.5rem',
-                      border: '1px solid #9ae6b4',
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, marginBottom: '0.5rem', color: '#276749' }}>
-                      📋 추론 결과 요약
-                    </div>
-                    <div style={{ fontSize: '0.9rem', color: '#2d3748' }}>
-                      {reasoningTrace.summary}
-                    </div>
-                    {reasoningTrace.inferredCount > 0 && (
-                      <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', color: '#276749' }}>
-                        새로 추론된 지식: <strong>{reasoningTrace.inferredCount}건</strong>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Timeline Steps */}
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-                      🔄 추론 단계 ({reasoningTrace.steps.length}단계)
-                    </h3>
-                    <div style={{ position: 'relative' }}>
-                      {/* Timeline line */}
-                      <div
-                        style={{
-                          position: 'absolute',
-                          left: '20px',
-                          top: '30px',
-                          bottom: '30px',
-                          width: '2px',
-                          backgroundColor: '#e2e8f0',
-                        }}
-                      />
-
-                      {reasoningTrace.steps.map((step, index) => {
-                        const stepStyle = getStepTypeStyle(step.type);
-                        const isExpanded = expandedSteps.has(step.stepNumber);
-
-                        return (
-                          <div
-                            key={step.stepNumber}
-                            style={{
-                              position: 'relative',
-                              paddingLeft: '50px',
-                              marginBottom: '1rem',
-                            }}
-                          >
-                            {/* Step indicator */}
-                            <div
-                              style={{
-                                position: 'absolute',
-                                left: '8px',
-                                top: '4px',
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                backgroundColor: stepStyle.bgColor,
-                                border: `2px solid ${stepStyle.color}`,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '0.9rem',
-                                zIndex: 1,
-                              }}
-                            >
-                              {stepStyle.icon}
-                            </div>
-
-                            {/* Step content */}
-                            <div
-                              style={{
-                                backgroundColor: stepStyle.bgColor,
-                                borderRadius: '8px',
-                                border: `1px solid ${stepStyle.color}30`,
-                                overflow: 'hidden',
-                              }}
-                            >
-                              {/* Step header */}
-                              <div
-                                style={{
-                                  padding: '0.75rem 1rem',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  justifyContent: 'space-between',
-                                  alignItems: 'center',
-                                }}
-                                onClick={() => toggleStepExpansion(step.stepNumber)}
-                              >
-                                <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span
-                                      style={{
-                                        fontSize: '0.7rem',
-                                        fontWeight: 600,
-                                        color: stepStyle.color,
-                                        textTransform: 'uppercase',
-                                      }}
-                                    >
-                                      Step {step.stepNumber}: {step.type}
-                                    </span>
-                                    {step.dataCount > 0 && (
-                                      <span
-                                        style={{
-                                          padding: '2px 6px',
-                                          backgroundColor: stepStyle.color,
-                                          color: 'white',
-                                          borderRadius: '4px',
-                                          fontSize: '0.7rem',
-                                        }}
-                                      >
-                                        {step.dataCount}건
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div style={{ fontWeight: 500, marginTop: '0.25rem' }}>
-                                    {step.description}
-                                  </div>
-                                  {step.resultSummary && (
-                                    <div style={{ fontSize: '0.875rem', color: '#4a5568', marginTop: '0.25rem' }}>
-                                      → {step.resultSummary}
-                                    </div>
-                                  )}
-                                </div>
-                                <span style={{ fontSize: '0.875rem', color: '#718096' }}>
-                                  {isExpanded ? '▲' : '▼'}
-                                </span>
-                              </div>
-
-                              {/* Step details (expanded) */}
-                              {isExpanded && (
-                                <div
-                                  style={{
-                                    padding: '0.75rem 1rem',
-                                    borderTop: `1px solid ${stepStyle.color}30`,
-                                    backgroundColor: 'white',
-                                  }}
-                                >
-                                  {step.descriptionDetail && (
-                                    <div style={{ marginBottom: '0.75rem' }}>
-                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
-                                        상세 설명
-                                      </div>
-                                      <div style={{ fontSize: '0.875rem', whiteSpace: 'pre-wrap' }}>
-                                        {step.descriptionDetail}
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {step.query && (
-                                    <div style={{ marginBottom: '0.75rem' }}>
-                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
-                                        쿼리
-                                      </div>
-                                      <code
-                                        style={{
-                                          display: 'block',
-                                          padding: '0.5rem',
-                                          backgroundColor: '#2d3748',
-                                          color: '#e2e8f0',
-                                          borderRadius: '4px',
-                                          fontSize: '0.8rem',
-                                          whiteSpace: 'pre-wrap',
-                                          wordBreak: 'break-all',
-                                        }}
-                                      >
-                                        {step.query}
-                                      </code>
-                                    </div>
-                                  )}
-
-                                  {step.data && step.data.length > 0 && (
-                                    <div>
-                                      <div style={{ fontSize: '0.75rem', color: '#718096', marginBottom: '0.25rem' }}>
-                                        데이터 ({step.data.length}건)
-                                      </div>
-                                      <div
-                                        style={{
-                                          maxHeight: '150px',
-                                          overflow: 'auto',
-                                          backgroundColor: '#f7fafc',
-                                          borderRadius: '4px',
-                                          padding: '0.5rem',
-                                        }}
-                                      >
-                                        {step.data.slice(0, 5).map((item, i) => (
-                                          <div
-                                            key={i}
-                                            style={{
-                                              padding: '0.5rem',
-                                              marginBottom: '0.25rem',
-                                              backgroundColor: 'white',
-                                              borderRadius: '4px',
-                                              fontSize: '0.8rem',
-                                              display: 'flex',
-                                              flexWrap: 'wrap',
-                                              gap: '0.5rem',
-                                            }}
-                                          >
-                                            {Object.entries(item).map(([key, value]) => (
-                                              <span
-                                                key={key}
-                                                style={{
-                                                  padding: '2px 6px',
-                                                  backgroundColor: '#e2e8f0',
-                                                  borderRadius: '3px',
-                                                }}
-                                              >
-                                                <strong>{key}:</strong> {String(value)}
-                                              </span>
-                                            ))}
-                                          </div>
-                                        ))}
-                                        {step.data.length > 5 && (
-                                          <div style={{ color: '#718096', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                                            ...외 {step.data.length - 5}건 더 있음
-                                          </div>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Evidence Section */}
-                  {reasoningTrace.evidence.length > 0 && (
-                    <div>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-                        📌 추론 근거 ({reasoningTrace.evidence.length}건)
-                      </h3>
-                      <div
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))',
-                          gap: '0.75rem',
-                        }}
-                      >
-                        {reasoningTrace.evidence.map((ev) => (
-                          <div
-                            key={ev.id}
-                            style={{
-                              padding: '0.75rem',
-                              backgroundColor: '#f7fafc',
-                              borderRadius: '6px',
-                              border: '1px solid #e2e8f0',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                              <span
-                                style={{
-                                  padding: '2px 6px',
-                                  backgroundColor: ev.type === 'PROPERTY' ? '#3498db' : ev.type === 'RELATIONSHIP' ? '#e67e22' : '#9b59b6',
-                                  color: 'white',
-                                  borderRadius: '4px',
-                                  fontSize: '0.7rem',
-                                  textTransform: 'uppercase',
-                                }}
-                              >
-                                {ev.type}
-                              </span>
-                              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>{ev.label}</span>
-                            </div>
-                            <div style={{ fontSize: '0.875rem', color: '#2d3748' }}>
-                              {ev.description}
-                            </div>
-                            <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#718096' }}>
-                              <span style={{ backgroundColor: '#e2e8f0', padding: '2px 6px', borderRadius: '3px' }}>
-                                {ev.propertyName}: {String(ev.propertyValue)}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Inferred Items */}
-                  {reasoningTrace.inferredItems.length > 0 && (
-                    <div style={{ marginTop: '1.5rem' }}>
-                      <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '1rem' }}>
-                        ✨ 새로 추론된 지식 ({reasoningTrace.inferredItems.length}건)
-                      </h3>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                        {reasoningTrace.inferredItems.map((item, i) => (
-                          <div
-                            key={i}
-                            style={{
-                              padding: '0.75rem',
-                              backgroundColor: '#fffaf0',
-                              borderRadius: '6px',
-                              border: '1px solid #ed8936',
-                              display: 'flex',
-                              flexWrap: 'wrap',
-                              gap: '0.5rem',
-                            }}
-                          >
-                            {Object.entries(item).map(([key, value]) => (
-                              <span
-                                key={key}
-                                style={{
-                                  padding: '4px 8px',
-                                  backgroundColor: '#fed7aa',
-                                  borderRadius: '4px',
-                                  fontSize: '0.875rem',
-                                }}
-                              >
-                                <strong>{key}:</strong> {String(value)}
-                              </span>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Modal Footer */}
-                <div
-                  style={{
-                    padding: '1rem 1.5rem',
-                    borderTop: '1px solid #e2e8f0',
-                    display: 'flex',
-                    justifyContent: 'flex-end',
-                    gap: '0.5rem',
-                    backgroundColor: '#f7fafc',
-                  }}
-                >
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => setShowTraceModal(false)}
-                  >
-                    닫기
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       )}
 
       {/* Ontology Information */}

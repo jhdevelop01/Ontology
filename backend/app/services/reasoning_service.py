@@ -15,7 +15,7 @@ from flask import current_app
 from datetime import datetime
 from uuid import uuid4
 
-from .neo4j_service import Neo4jService
+from .neo4j_service import Neo4jService, serialize_neo4j_dict, serialize_neo4j_value
 
 
 class ReasoningTrace:
@@ -77,7 +77,22 @@ class ReasoningTrace:
         self.inferred_items = inferred_items or []
 
     def to_dict(self) -> Dict[str, Any]:
-        """딕셔너리로 변환"""
+        """딕셔너리로 변환 (Neo4j DateTime 직렬화 포함)"""
+        # steps와 evidence 내의 Neo4j 타입 직렬화
+        serialized_steps = []
+        for step in self.steps:
+            serialized_step = {}
+            for k, v in step.items():
+                if k == 'data' and isinstance(v, list):
+                    # data 리스트 내의 각 항목 직렬화
+                    serialized_step[k] = [serialize_neo4j_value(item) if isinstance(item, dict) else serialize_neo4j_value(item) for item in v]
+                else:
+                    serialized_step[k] = serialize_neo4j_value(v)
+            serialized_steps.append(serialized_step)
+
+        serialized_evidence = [serialize_neo4j_value(e) for e in self.evidence]
+        serialized_inferred = [serialize_neo4j_value(item) for item in self.inferred_items]
+
         return {
             'id': self.id,
             'ruleId': self.rule_id,
@@ -86,10 +101,10 @@ class ReasoningTrace:
             'startedAt': self.started_at.isoformat(),
             'completedAt': self.completed_at.isoformat() if self.completed_at else None,
             'result': self.result,
-            'steps': self.steps,
-            'evidence': self.evidence,
+            'steps': serialized_steps,
+            'evidence': serialized_evidence,
             'inferredCount': self.inferred_count,
-            'inferredItems': self.inferred_items,
+            'inferredItems': serialized_inferred,
             'summary': self._generate_summary()
         }
 
@@ -299,6 +314,114 @@ class ReasoningService:
                 }]->(s2)
                 RETURN s1.sensorId AS sensor1Id, s2.sensorId AS sensor2Id
             '''
+        },
+
+        # Axiom-based reasoning rules
+        {
+            'id': 'axiom_property_chain',
+            'name': '속성 체인 추론 (공리)',
+            'description': 'FEEDS_INTO와 LOCATED_IN을 결합하여 INFLUENCES 관계를 추론합니다',
+            'category': '공리',
+            'condition': 'Equipment E1이 E2로 FEEDS_INTO하고, E2가 ProcessArea A에 LOCATED_IN하면 E1이 A에 영향을 미침',
+            'inference': 'E1에서 ProcessArea A로 INFLUENCES 관계를 추가합니다',
+            'input_data': ['FEEDS_INTO 관계', 'LOCATED_IN 관계'],
+            'output_data': ['INFLUENCES 관계'],
+            'axiom': 'property_chain_feeds_locatedIn',
+            'query': '''
+                MATCH (e1:Equipment)-[:FEEDS_INTO]->(e2:Equipment)-[:LOCATED_IN]->(a:ProcessArea)
+                WHERE NOT EXISTS {
+                    MATCH (e1)-[:INFLUENCES]->(a)
+                }
+                RETURN e1.equipmentId AS sourceId, e1.name AS sourceName,
+                       e2.equipmentId AS viaId, e2.name AS viaName,
+                       a.areaId AS areaId, a.name AS areaName,
+                       'PropertyChainInferred' AS inferredType
+                LIMIT 10
+            ''',
+            'action_query': '''
+                MATCH (e1:Equipment {equipmentId: $sourceId})
+                MATCH (a:ProcessArea {areaId: $areaId})
+                MERGE (e1)-[r:INFLUENCES {
+                    isInferred: true,
+                    inferredAt: datetime(),
+                    axiom: 'property_chain_feeds_locatedIn',
+                    via: $viaId
+                }]->(a)
+                RETURN e1.equipmentId AS sourceId, a.areaId AS areaId
+            '''
+        },
+        {
+            'id': 'axiom_health_subsumption',
+            'name': '건강 상태 분류 (공리)',
+            'description': 'healthScore 값에 따라 설비의 건강 상태를 자동으로 분류합니다',
+            'category': '공리',
+            'condition': 'Equipment의 healthScore >= 85이면 Normal, >= 70이면 Warning, < 70이면 Critical',
+            'inference': 'HealthStatus 노드를 생성하고 HAS_STATUS 관계를 추가합니다',
+            'input_data': ['Equipment.healthScore'],
+            'output_data': ['HealthStatus 노드', 'HAS_STATUS 관계'],
+            'axiom': 'subsumption_health_status',
+            'query': '''
+                MATCH (e:Equipment)
+                WHERE e.healthScore IS NOT NULL
+                AND NOT EXISTS {
+                    MATCH (e)-[:HAS_STATUS]->(:HealthStatus:Inferred)
+                }
+                WITH e,
+                    CASE
+                        WHEN e.healthScore >= 85 THEN 'Normal'
+                        WHEN e.healthScore >= 70 THEN 'Warning'
+                        ELSE 'Critical'
+                    END AS inferredStatus
+                RETURN e.equipmentId AS equipmentId, e.name AS name,
+                       e.healthScore AS healthScore,
+                       inferredStatus AS status,
+                       'HealthStatusInferred' AS inferredType
+                LIMIT 20
+            ''',
+            'action_query': '''
+                MATCH (e:Equipment {equipmentId: $equipmentId})
+                MERGE (s:HealthStatus:Inferred {
+                    statusId: 'STATUS-' + $equipmentId,
+                    value: $status,
+                    healthScore: $healthScore,
+                    isInferred: true,
+                    inferredAt: datetime(),
+                    axiom: 'subsumption_health_status'
+                })
+                MERGE (e)-[r:HAS_STATUS {isInferred: true}]->(s)
+                RETURN e.equipmentId AS equipmentId, s.value AS status
+            '''
+        },
+        {
+            'id': 'axiom_inverse_sensor',
+            'name': '역속성 전파 (공리)',
+            'description': 'HAS_SENSOR와 IS_ATTACHED_TO 역관계를 자동으로 생성합니다',
+            'category': '공리',
+            'condition': 'Equipment가 Sensor에 대한 HAS_SENSOR 관계를 가지면, Sensor는 Equipment에 대한 IS_ATTACHED_TO를 가져야 함',
+            'inference': 'IS_ATTACHED_TO 역관계를 추가합니다',
+            'input_data': ['HAS_SENSOR 관계'],
+            'output_data': ['IS_ATTACHED_TO 관계'],
+            'axiom': 'inverse_hasSensor',
+            'query': '''
+                MATCH (e:Equipment)-[:HAS_SENSOR]->(s:Sensor)
+                WHERE NOT EXISTS {
+                    MATCH (s)-[:IS_ATTACHED_TO]->(e)
+                }
+                RETURN e.equipmentId AS equipmentId, e.name AS equipmentName,
+                       s.sensorId AS sensorId, s.name AS sensorName,
+                       'InversePropertyInferred' AS inferredType
+                LIMIT 20
+            ''',
+            'action_query': '''
+                MATCH (e:Equipment {equipmentId: $equipmentId})
+                MATCH (s:Sensor {sensorId: $sensorId})
+                MERGE (s)-[r:IS_ATTACHED_TO {
+                    isInferred: true,
+                    inferredAt: datetime(),
+                    axiom: 'inverse_hasSensor'
+                }]->(e)
+                RETURN s.sensorId AS sensorId, e.equipmentId AS equipmentId
+            '''
         }
     ]
 
@@ -431,7 +554,11 @@ class ReasoningService:
                     ORDER BY n.inferredAt DESC
                     LIMIT $limit
                 ''', {'limit': limit})
-                nodes = [dict(r) for r in nodes_result]
+                nodes = []
+                for r in nodes_result:
+                    node = dict(r)
+                    node['properties'] = serialize_neo4j_dict(node.get('properties', {}))
+                    nodes.append(node)
 
                 # Get inferred relationships
                 rels_result = session.run('''
@@ -446,7 +573,11 @@ class ReasoningService:
                     ORDER BY r.inferredAt DESC
                     LIMIT $limit
                 ''', {'limit': limit})
-                relationships = [dict(r) for r in rels_result]
+                relationships = []
+                for r in rels_result:
+                    rel = dict(r)
+                    rel['properties'] = serialize_neo4j_dict(rel.get('properties', {}))
+                    relationships.append(rel)
 
                 return {
                     'status': 'success',
