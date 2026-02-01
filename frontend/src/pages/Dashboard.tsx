@@ -3,11 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
   Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, ReferenceArea,
 } from 'recharts';
 import { ontologyApi, anomalyApi, equipmentApi, maintenanceApi, energyApi } from '../services/api';
 import type {
   OntologyStats, Anomaly, Equipment, ProcessFlowData, ProcessFlowNode,
   MaintenanceRecommendation, EnergyTimeseriesSummary, Sensor,
+  SensorWithObservations,
 } from '../types';
 
 // Process area colors (matched to DB area IDs)
@@ -304,86 +306,116 @@ const ProcessFlowGraph: React.FC<{
   // ─── SVG Definitions ──────────────────────────────────
   const renderDefs = () => (
     <defs>
+      {/* Dot grid pattern for tech background */}
+      <pattern id="dot-grid" width="16" height="16" patternUnits="userSpaceOnUse">
+        <circle cx="8" cy="8" r="0.6" fill="rgba(148,163,184,0.2)" />
+      </pattern>
       <marker id="flow-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
-        <polygon points="0 0, 8 3, 0 6" fill="#90cdf4" />
+        <polygon points="0 0, 8 3, 0 6" fill="#38bdf8" />
       </marker>
       <marker id="flow-arrow-step" markerWidth="6" markerHeight="5" refX="5" refY="2.5" orient="auto">
-        <polygon points="0 0.5, 5 2.5, 0 4.5" fill="#90cdf4" opacity="0.7" />
+        <polygon points="0 0.5, 5 2.5, 0 4.5" fill="#38bdf8" opacity="0.7" />
       </marker>
       <filter id="node-shadow" x="-8%" y="-8%" width="116%" height="124%">
-        <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.08" />
+        <feDropShadow dx="0" dy="2" stdDeviation="4" floodColor="#000" floodOpacity="0.4" />
       </filter>
-      <filter id="node-shadow-selected" x="-8%" y="-8%" width="116%" height="124%">
-        <feDropShadow dx="0" dy="3" stdDeviation="5" floodColor="#2c5282" floodOpacity="0.25" />
+      <filter id="node-shadow-selected" x="-12%" y="-12%" width="124%" height="128%">
+        <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#38bdf8" floodOpacity="0.5" />
       </filter>
-      <filter id="node-glow-warn" x="-12%" y="-12%" width="124%" height="128%">
-        <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#dd6b20" floodOpacity="0.35" />
+      <filter id="node-glow-warn" x="-16%" y="-16%" width="132%" height="136%">
+        <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#f59e0b" floodOpacity="0.5" />
       </filter>
-      <filter id="node-glow-crit" x="-12%" y="-12%" width="124%" height="128%">
-        <feDropShadow dx="0" dy="0" stdDeviation="6" floodColor="#e53e3e" floodOpacity="0.45" />
+      <filter id="node-glow-crit" x="-16%" y="-16%" width="132%" height="136%">
+        <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="#ef4444" floodOpacity="0.6" />
+      </filter>
+      {/* Neon glow filter for pipes */}
+      <filter id="pipe-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+      <filter id="pipe-glow-strong" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="blur" />
+        <feMerge>
+          <feMergeNode in="blur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
       </filter>
       {AREA_ORDER.map(areaId => {
         const c = AREA_COLORS[areaId] || '#95a5a6';
         return (
           <linearGradient key={`g-${areaId}`} id={`area-grad-${areaId}`} x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor={c} stopOpacity="0.92" />
-            <stop offset="100%" stopColor={c} stopOpacity="0.72" />
+            <stop offset="0%" stopColor={c} stopOpacity="0.85" />
+            <stop offset="100%" stopColor={c} stopOpacity="0.55" />
           </linearGradient>
         );
       })}
       <linearGradient id="node-bg-normal" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#ffffff" />
-        <stop offset="100%" stopColor="#f7fafc" />
+        <stop offset="0%" stopColor="#1e293b" />
+        <stop offset="100%" stopColor="#0f172a" />
       </linearGradient>
       <linearGradient id="node-bg-warning" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#fffaf0" />
-        <stop offset="100%" stopColor="#fefcbf" />
+        <stop offset="0%" stopColor="#292218" />
+        <stop offset="100%" stopColor="#1a1508" />
       </linearGradient>
       <linearGradient id="node-bg-critical" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#fff5f5" />
-        <stop offset="100%" stopColor="#fed7d7" />
+        <stop offset="0%" stopColor="#2a1215" />
+        <stop offset="100%" stopColor="#1a0a0c" />
       </linearGradient>
       <linearGradient id="edge-gradient" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#90cdf4" stopOpacity="0.6" />
-        <stop offset="50%" stopColor="#63b3ed" stopOpacity="0.85" />
-        <stop offset="100%" stopColor="#90cdf4" stopOpacity="0.6" />
+        <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.5" />
+        <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.9" />
+        <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0.5" />
       </linearGradient>
       <linearGradient id="water-progress-grad" x1="0" y1="0" x2="1" y2="0">
-        <stop offset="0%" stopColor="#bee3f8" stopOpacity="0.5" />
-        <stop offset="25%" stopColor="#90cdf4" stopOpacity="0.6" />
-        <stop offset="50%" stopColor="#63b3ed" stopOpacity="0.7" />
-        <stop offset="75%" stopColor="#4299e1" stopOpacity="0.8" />
-        <stop offset="100%" stopColor="#2b6cb0" stopOpacity="0.9" />
+        <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
+        <stop offset="25%" stopColor="#0ea5e9" stopOpacity="0.6" />
+        <stop offset="50%" stopColor="#38bdf8" stopOpacity="0.8" />
+        <stop offset="75%" stopColor="#3b82f6" stopOpacity="0.85" />
+        <stop offset="100%" stopColor="#6366f1" stopOpacity="0.9" />
       </linearGradient>
     </defs>
   );
 
-  // ─── Title bar with animated flowing dots ─────────────
+  // ─── Title bar with LIVE indicator + animated flowing dots ──
   const renderTitleBar = () => (
     <g>
-      <text x={20} y={20} fontSize={10} fill="#a0aec0" fontWeight="500">&#9679; 원수 입수</text>
-      <line x1={82} y1={17} x2={svgW - 100} y2={17} stroke="#e2e8f0" strokeWidth={1} />
-      <circle r={2.5} fill="#63b3ed" opacity={0}>
-        <animateMotion dur="5s" repeatCount="indefinite" path={`M 82 17 L ${svgW - 100} 17`} />
-        <animate attributeName="opacity" values="0;0.7;0.7;0" dur="5s" repeatCount="indefinite" />
+      {/* LIVE pulse indicator */}
+      <circle cx={16} cy={16} r={3.5} fill="#22c55e">
+        <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="r" values="3.5;5;3.5" dur="2s" repeatCount="indefinite" />
       </circle>
-      <circle r={2} fill="#90cdf4" opacity={0}>
-        <animateMotion dur="5.5s" repeatCount="indefinite" path={`M 82 17 L ${svgW - 100} 17`} begin="2s" />
-        <animate attributeName="opacity" values="0;0.5;0.5;0" dur="5.5s" repeatCount="indefinite" begin="2s" />
+      <circle cx={16} cy={16} r={6} fill="none" stroke="#22c55e" strokeWidth={0.8} opacity={0}>
+        <animate attributeName="opacity" values="0;0.4;0" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite" />
       </circle>
-      <circle r={1.5} fill="#bee3f8" opacity={0}>
-        <animateMotion dur="6s" repeatCount="indefinite" path={`M 82 17 L ${svgW - 100} 17`} begin="3.5s" />
-        <animate attributeName="opacity" values="0;0.4;0.4;0" dur="6s" repeatCount="indefinite" begin="3.5s" />
+      <text x={26} y={20} fontSize={8} fill="#22c55e" fontWeight="700" letterSpacing="1.5">LIVE</text>
+      <text x={60} y={20} fontSize={10} fill="#94a3b8" fontWeight="500">UPW PROCESS MONITORING</text>
+      <line x1={220} y1={17} x2={svgW - 160} y2={17} stroke="rgba(56,189,248,0.15)" strokeWidth={1} />
+      {/* Flowing particles along top line */}
+      <circle r={2.5} fill="#38bdf8" opacity={0} filter="url(#pipe-glow)">
+        <animateMotion dur="5s" repeatCount="indefinite" path={`M 220 17 L ${svgW - 160} 17`} />
+        <animate attributeName="opacity" values="0;0.8;0.8;0" dur="5s" repeatCount="indefinite" />
       </circle>
-      <text x={svgW - 20} y={20} textAnchor="end" fontSize={10} fill="#a0aec0" fontWeight="500">초순수 공급 &#9679;</text>
-      <line x1={26} y1={38} x2={svgW - 26} y2={38} stroke="#e2e8f0" strokeWidth={0.5} />
-      <text x={svgW / 2} y={47} textAnchor="middle" fontSize={8} fill="#cbd5e0">
+      <circle r={2} fill="#0ea5e9" opacity={0}>
+        <animateMotion dur="5.5s" repeatCount="indefinite" path={`M 220 17 L ${svgW - 160} 17`} begin="2s" />
+        <animate attributeName="opacity" values="0;0.6;0.6;0" dur="5.5s" repeatCount="indefinite" begin="2s" />
+      </circle>
+      <circle r={1.5} fill="#06b6d4" opacity={0}>
+        <animateMotion dur="6s" repeatCount="indefinite" path={`M 220 17 L ${svgW - 160} 17`} begin="3.5s" />
+        <animate attributeName="opacity" values="0;0.5;0.5;0" dur="6s" repeatCount="indefinite" begin="3.5s" />
+      </circle>
+      <text x={svgW - 20} y={20} textAnchor="end" fontSize={10} fill="#94a3b8" fontWeight="500">초순수 공급 &#9679;</text>
+      <line x1={26} y1={38} x2={svgW - 26} y2={38} stroke="rgba(148,163,184,0.12)" strokeWidth={0.5} />
+      <text x={svgW / 2} y={47} textAnchor="middle" fontSize={8} fill="#64748b">
         Water Flow Direction &#8594;
       </text>
     </g>
   );
 
-  // ─── Nodes with staggered entrance animation + sensor badge ──
+  // ─── Nodes — dark industrial cards with neon accents ──
   const renderNodes = () => data.nodes.map((node, idx) => {
     const pos = nodePos[node.id];
     if (!pos) return null;
@@ -397,7 +429,7 @@ const ProcessFlowGraph: React.FC<{
 
     const bg = isCrit ? 'url(#node-bg-critical)' : isWarn ? 'url(#node-bg-warning)' : 'url(#node-bg-normal)';
     const flt = isSel ? 'url(#node-shadow-selected)' : isCrit ? 'url(#node-glow-crit)' : isWarn ? 'url(#node-glow-warn)' : 'url(#node-shadow)';
-    const barColor = isCrit ? '#e53e3e' : isWarn ? '#dd6b20' : '#38a169';
+    const barColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#22c55e';
     const label = isCrit ? 'CRITICAL' : isWarn ? 'WARNING' : 'NORMAL';
     const hpBarW = Math.max(0, (nodeW - 48) * hp / 100);
     const delay = idx * 0.07;
@@ -415,64 +447,65 @@ const ProcessFlowGraph: React.FC<{
         {/* Entrance animation — fade in */}
         <animate attributeName="opacity" from="0" to="1" dur="0.5s" begin={`${delay}s`} fill="freeze" />
 
-        {/* Card body */}
-        <rect width={nodeW} height={nodeH} rx={10} fill={bg} stroke={isSel ? '#2c5282' : areaColor}
-          strokeWidth={isSel ? 2.5 : 1.5} filter={flt} />
+        {/* Card body — dark */}
+        <rect width={nodeW} height={nodeH} rx={10} fill={bg}
+          stroke={isSel ? '#38bdf8' : `${areaColor}60`}
+          strokeWidth={isSel ? 2 : 1} filter={flt} />
         {/* Hover overlay */}
         <rect className="node-hover-overlay" width={nodeW} height={nodeH} rx={10}
           fill="white" opacity={0} style={{ pointerEvents: 'none' }} />
-        {/* Top color strip */}
-        <rect x={0} y={0} width={nodeW} height={4} fill={areaColor}
+        {/* Top color strip — neon glow */}
+        <rect x={0} y={0} width={nodeW} height={3} fill={areaColor} opacity={0.9}
           clipPath="inset(0 0 0 0 round 10px 10px 0 0)" />
-        {/* Status badge */}
-        <rect x={nodeW - 52} y={8} width={46} height={14} rx={7} fill={statusColor} opacity={0.15} />
+        {/* Status badge — neon */}
+        <rect x={nodeW - 52} y={8} width={46} height={14} rx={7} fill={statusColor} opacity={0.2} />
         <text x={nodeW - 29} y={18} textAnchor="middle" fontSize={7} fontWeight="700"
           fill={statusColor} letterSpacing="0.3">{label}</text>
         {/* Equipment ID */}
-        <text x={8} y={20} fontSize={9} fill="#a0aec0" fontWeight="500">{node.id}</text>
-        {/* Names */}
-        <text x={nodeW / 2} y={36} textAnchor="middle" fontSize={11.5} fontWeight="bold" fill="#2d3748">
+        <text x={8} y={20} fontSize={9} fill="#64748b" fontWeight="500">{node.id}</text>
+        {/* Names — light on dark */}
+        <text x={nodeW / 2} y={36} textAnchor="middle" fontSize={11.5} fontWeight="bold" fill="#e2e8f0">
           {node.nameKo && node.nameKo.length > 9 ? node.nameKo.substring(0, 8) + '..' : (node.nameKo || '')}
         </text>
-        <text x={nodeW / 2} y={47} textAnchor="middle" fontSize={7.5} fill="#a0aec0">
+        <text x={nodeW / 2} y={47} textAnchor="middle" fontSize={7.5} fill="#64748b">
           {node.name && node.name.length > 18 ? node.name.substring(0, 16) + '..' : (node.name || '')}
         </text>
-        {/* Health bar — animated fill */}
-        <rect x={8} y={54} width={nodeW - 48} height={5} rx={2.5} fill="#e2e8f0" />
-        <rect x={8} y={54} width={0} height={5} rx={2.5} fill={barColor}>
+        {/* Health bar — thicker with glow */}
+        <rect x={8} y={54} width={nodeW - 48} height={7} rx={3.5} fill="#1e293b" />
+        <rect x={8} y={54} width={0} height={7} rx={3.5} fill={barColor}>
           <animate attributeName="width" from="0" to={hpBarW} dur="0.7s" begin={`${delay + 0.3}s`} fill="freeze" />
         </rect>
-        <text x={nodeW - 6} y={60} textAnchor="end" fontSize={10} fontWeight="700" fill={statusColor}>
+        <text x={nodeW - 6} y={61} textAnchor="end" fontSize={10} fontWeight="700" fill={statusColor}>
           {hp.toFixed(0)}%
         </text>
-        {/* Sensor count badge */}
+        {/* Sensor count badge — dark */}
         {sCnt > 0 && (
           <g>
-            <rect x={6} y={64} width={40} height={11} rx={5.5} fill="#ebf8ff" stroke="#bee3f8" strokeWidth={0.5} />
-            <text x={26} y={72} textAnchor="middle" fontSize={7} fill="#2c5282" fontWeight="600">
+            <rect x={6} y={64} width={40} height={11} rx={5.5} fill="rgba(56,189,248,0.1)" stroke="rgba(56,189,248,0.3)" strokeWidth={0.5} />
+            <text x={26} y={72} textAnchor="middle" fontSize={7} fill="#38bdf8" fontWeight="600">
               S:{sCnt}
             </text>
           </g>
         )}
-        {/* Animated selection ring */}
+        {/* Animated selection ring — neon cyan */}
         {isSel && (
           <rect x={-2} y={-2} width={nodeW + 4} height={nodeH + 4} rx={12}
-            fill="none" stroke="#2c5282" strokeWidth={2} strokeDasharray="4,3" opacity={0.6}>
+            fill="none" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="4,3" opacity={0.7}>
             <animate attributeName="stroke-dashoffset" values="0;14" dur="1s" repeatCount="indefinite" />
           </rect>
         )}
         {/* Connection ports — LEFT (incoming) / RIGHT (outgoing) */}
         {hasIncoming.has(node.id) && (
-          <circle cx={0} cy={nodeH / 2} r={3.5} fill={areaColor} stroke="white" strokeWidth={1.5} />
+          <circle cx={0} cy={nodeH / 2} r={3.5} fill={areaColor} stroke="#0f172a" strokeWidth={1.5} />
         )}
         {hasOutgoing.has(node.id) && (
-          <circle cx={nodeW} cy={nodeH / 2} r={3.5} fill={areaColor} stroke="white" strokeWidth={1.5} />
+          <circle cx={nodeW} cy={nodeH / 2} r={3.5} fill={areaColor} stroke="#0f172a" strokeWidth={1.5} />
         )}
       </g>
     );
   });
 
-  // ─── Edges — orthogonal routing, rendered ON TOP ──────
+  // ─── Edges — pipeline visualization with fluid flow ──────
   const renderEdges = () => {
     // Build node→area lookup
     const nodeArea: Record<string, string> = {};
@@ -515,40 +548,58 @@ const ProcessFlowGraph: React.FC<{
           }
 
           if (sameArea) {
-            // Within-area: thinner horizontal connector (secondary visual)
+            // Within-area: thinner pipe (secondary visual)
             const dur = 1.2 + (i % 3) * 0.2;
             return (
               <g key={`e-${i}`}>
-                <path d={d} fill="none" stroke="white" strokeWidth={4} strokeLinecap="round" opacity={0.6} />
-                <path d={d} fill="none" stroke="#e2e8f0" strokeWidth={2.5} strokeLinecap="round" />
-                <path d={d} fill="none" stroke="#90cdf4" strokeWidth={1.8}
-                  strokeLinecap="round" markerEnd="url(#flow-arrow-step)" opacity={0.7} />
-                <circle r={2} fill="#63b3ed" opacity={0}>
+                {/* Pipe outer wall */}
+                <path d={d} fill="none" stroke="rgba(56,189,248,0.08)" strokeWidth={6} strokeLinecap="round" />
+                {/* Pipe inner wall */}
+                <path d={d} fill="none" stroke="rgba(15,23,42,0.6)" strokeWidth={3.5} strokeLinecap="round" />
+                {/* Fluid core */}
+                <path d={d} fill="none" stroke="#0ea5e9" strokeWidth={2} strokeOpacity={0.6}
+                  strokeLinecap="round" markerEnd="url(#flow-arrow-step)" />
+                {/* Flowing dash animation */}
+                <path d={d} fill="none" stroke="#38bdf8" strokeWidth={1.2}
+                  strokeLinecap="round" strokeDasharray="4,8" className="flow-edge-animated" opacity={0.3} />
+                {/* Single small particle */}
+                <circle r={2} fill="#38bdf8" opacity={0} filter="url(#pipe-glow)">
                   <animateMotion dur={`${dur}s`} repeatCount="indefinite" path={d} />
-                  <animate attributeName="opacity" values="0;0.6;0.6;0" dur={`${dur}s`} repeatCount="indefinite" />
+                  <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${dur}s`} repeatCount="indefinite" />
                 </circle>
               </g>
             );
           }
 
-          // Cross-area: bold flow arrow (primary visual)
+          // Cross-area: bold pipeline (primary visual)
           const dur = 2.2 + (i % 5) * 0.35;
           return (
             <g key={`e-${i}`}>
-              <path d={d} fill="none" stroke="white" strokeWidth={6} strokeLinecap="round" opacity={0.7} />
-              <path d={d} fill="none" stroke="#e2e8f0" strokeWidth={3.5} strokeLinecap="round" />
-              <path d={d} fill="none" stroke="url(#edge-gradient)" strokeWidth={2.5}
-                strokeLinecap="round" markerEnd="url(#flow-arrow)" />
-              <path d={d} fill="none" stroke="#63b3ed" strokeWidth={1.8}
-                strokeLinecap="round" strokeDasharray="5,7" className="flow-edge-animated" opacity={0.35} />
-              <circle r={2.5} fill="#4299e1" opacity={0}>
+              {/* Pipe outer wall — semi-transparent glow */}
+              <path d={d} fill="none" stroke="rgba(56,189,248,0.12)" strokeWidth={10} strokeLinecap="round" />
+              {/* Pipe inner wall — dark */}
+              <path d={d} fill="none" stroke="rgba(15,23,42,0.7)" strokeWidth={6} strokeLinecap="round" />
+              {/* Fluid core with gradient */}
+              <path d={d} fill="none" stroke="url(#edge-gradient)" strokeWidth={3}
+                strokeLinecap="round" markerEnd="url(#flow-arrow)" filter="url(#pipe-glow)" />
+              {/* Flowing dash animation */}
+              <path d={d} fill="none" stroke="#38bdf8" strokeWidth={2}
+                strokeLinecap="round" strokeDasharray="6,10" className="flow-edge-animated" opacity={0.25} />
+              {/* Particle 1 — large, glowing */}
+              <circle r={3} fill="#38bdf8" opacity={0} filter="url(#pipe-glow-strong)">
                 <animateMotion dur={`${dur}s`} repeatCount="indefinite" path={d} />
-                <animate attributeName="opacity" values="0;0.8;0.8;0" dur={`${dur}s`} repeatCount="indefinite" />
-                <animate attributeName="r" values="2;3;2" dur={`${dur}s`} repeatCount="indefinite" />
+                <animate attributeName="opacity" values="0;0.9;0.9;0" dur={`${dur}s`} repeatCount="indefinite" />
+                <animate attributeName="r" values="2;3.5;2" dur={`${dur}s`} repeatCount="indefinite" />
               </circle>
-              <circle r={1.8} fill="#90cdf4" opacity={0}>
-                <animateMotion dur={`${dur + 0.5}s`} repeatCount="indefinite" path={d} begin={`${dur * 0.4}s`} />
-                <animate attributeName="opacity" values="0;0.6;0.6;0" dur={`${dur + 0.5}s`} repeatCount="indefinite" begin={`${dur * 0.4}s`} />
+              {/* Particle 2 — medium, offset timing */}
+              <circle r={2} fill="#0ea5e9" opacity={0} filter="url(#pipe-glow)">
+                <animateMotion dur={`${dur + 0.6}s`} repeatCount="indefinite" path={d} begin={`${dur * 0.35}s`} />
+                <animate attributeName="opacity" values="0;0.7;0.7;0" dur={`${dur + 0.6}s`} repeatCount="indefinite" begin={`${dur * 0.35}s`} />
+              </circle>
+              {/* Particle 3 — small, different speed */}
+              <circle r={1.5} fill="#06b6d4" opacity={0}>
+                <animateMotion dur={`${dur + 1.2}s`} repeatCount="indefinite" path={d} begin={`${dur * 0.7}s`} />
+                <animate attributeName="opacity" values="0;0.5;0.5;0" dur={`${dur + 1.2}s`} repeatCount="indefinite" begin={`${dur * 0.7}s`} />
               </circle>
             </g>
           );
@@ -557,54 +608,64 @@ const ProcessFlowGraph: React.FC<{
     );
   };
 
-  // ─── Area backgrounds (uniform height) ────────────────
+  // ─── Area backgrounds — dark glassmorphism ────────────
   const renderAreaBackgrounds = () => AREA_ORDER.map(areaId => {
     const layout = areaLayouts[areaId];
     if (!layout) return null;
     const color = AREA_COLORS[areaId] || '#95a5a6';
-    const hc = layout.avgHealth < 70 ? '#e53e3e' : layout.avgHealth < 85 ? '#dd6b20' : '#38a169';
+    const hc = layout.avgHealth < 70 ? '#ef4444' : layout.avgHealth < 85 ? '#f59e0b' : '#22c55e';
     const wq = WATER_QUALITY[areaId];
 
     return (
       <g key={`a-${areaId}`}>
+        {/* Glass panel background */}
         <rect x={layout.x - 4} y={topY} width={layout.width + 8} height={allAreaH}
-          rx={12} fill="white" opacity={0.5} />
-        <rect x={layout.x - 4} y={topY} width={layout.width + 8} height={allAreaH}
-          rx={12} fill={`${color}08`} stroke={`${color}30`} strokeWidth={1} />
+          rx={12} fill="rgba(15,23,42,0.6)" stroke={`${color}30`} strokeWidth={1} />
+        {/* Subtle inner border glow */}
+        <rect x={layout.x - 3} y={topY + 1} width={layout.width + 6} height={allAreaH - 2}
+          rx={11} fill="none" stroke={`${color}15`} strokeWidth={0.5} />
+        {/* Header gradient */}
         <rect x={layout.x - 4} y={topY} width={layout.width + 8} height={headerH}
           rx={12} fill={`url(#area-grad-${areaId})`} />
         <rect x={layout.x - 4} y={topY + headerH - 14} width={layout.width + 8} height={14}
           fill={`url(#area-grad-${areaId})`} />
+        {/* Area name */}
         <text x={layout.x + 8} y={topY + 17} fontSize={11} fontWeight="700" fill="white">
           {AREA_NAMES[areaId] || areaId}
         </text>
         {wq && (
-          <text x={layout.x + 8} y={topY + 32} fontSize={7.5} fill="rgba(255,255,255,0.8)">
+          <text x={layout.x + 8} y={topY + 32} fontSize={7.5} fill="rgba(255,255,255,0.7)">
             {wq.process}
           </text>
         )}
-        <circle cx={layout.x + layout.width - 32} cy={topY + 15} r={3} fill={hc} />
+        {/* Health indicator */}
+        <circle cx={layout.x + layout.width - 32} cy={topY + 15} r={3} fill={hc}>
+          {layout.avgHealth < 85 && (
+            <animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite" />
+          )}
+        </circle>
         <text x={layout.x + layout.width - 38} y={topY + 19} textAnchor="end"
           fontSize={9} fontWeight="600" fill="rgba(255,255,255,0.9)">
           {layout.avgHealth.toFixed(0)}%
         </text>
         <text x={layout.x + layout.width - 4} y={topY + 19} textAnchor="end"
-          fontSize={9} fill="rgba(255,255,255,0.8)">
+          fontSize={9} fill="rgba(255,255,255,0.7)">
           {layout.nodeCount}대
         </text>
+        {/* Bottom key metric bar */}
         {wq && (
           <g>
             <rect x={layout.x} y={topY + allAreaH - 20} width={layout.width} height={20}
-              rx={0} fill={`${color}10`} />
+              rx={0} fill="rgba(15,23,42,0.5)" />
             <text x={layout.x + layout.width / 2} y={topY + allAreaH - 6} textAnchor="middle"
-              fontSize={8} fill={color} fontWeight="600">{wq.keyMetric}</text>
+              fontSize={8} fill={color} fontWeight="600" opacity={0.85}>{wq.keyMetric}</text>
           </g>
         )}
       </g>
     );
   });
 
-  // ─── Water quality transition indicators between areas ─
+  // ─── Water quality transition — neon glow connectors ──
   const renderWaterTransitions = () => {
     const els: JSX.Element[] = [];
     for (let i = 0; i < AREA_ORDER.length - 1; i++) {
@@ -624,18 +685,21 @@ const ProcessFlowGraph: React.FC<{
 
       els.push(
         <g key={`wt-${i}`}>
+          {/* Glow connector line */}
           <line x1={gapL + 2} y1={midY} x2={gapR - 2} y2={midY}
-            stroke="#90cdf4" strokeWidth={1.5} strokeDasharray="3,3"
-            markerEnd="url(#flow-arrow)" opacity={0.5} />
-          <rect x={midX - 32} y={midY - 22} width={64} height={14} rx={7}
-            fill="white" stroke="#e2e8f0" strokeWidth={0.5} opacity={0.95} />
-          <text x={midX} y={midY - 12} textAnchor="middle" fontSize={6.5} fill="#4a5568" fontWeight="600">
+            stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="3,3"
+            markerEnd="url(#flow-arrow)" opacity={0.4} filter="url(#pipe-glow)" />
+          {/* Glass label */}
+          <rect x={midX - 34} y={midY - 22} width={68} height={16} rx={8}
+            fill="rgba(15,23,42,0.85)" stroke="rgba(56,189,248,0.3)" strokeWidth={0.5} />
+          <text x={midX} y={midY - 11} textAnchor="middle" fontSize={6.5} fill="#94a3b8" fontWeight="600">
             {outputTag}
           </text>
-          <circle r={2.5} fill="#4299e1" opacity={0}>
+          {/* Glowing particle */}
+          <circle r={2.5} fill="#38bdf8" opacity={0} filter="url(#pipe-glow)">
             <animateMotion dur="1.6s" repeatCount="indefinite"
               path={`M ${gapL + 2} ${midY} L ${gapR - 2} ${midY}`} />
-            <animate attributeName="opacity" values="0;0.75;0.75;0" dur="1.6s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0;0.8;0.8;0" dur="1.6s" repeatCount="indefinite" />
           </circle>
         </g>
       );
@@ -643,7 +707,7 @@ const ProcessFlowGraph: React.FC<{
     return els;
   };
 
-  // ─── Water quality progress bar ───────────────────────
+  // ─── Water quality progress bar — neon style ────────────
   const renderWaterProgressBar = () => {
     const barX = 26;
     const barW = svgW - 52;
@@ -651,31 +715,32 @@ const ProcessFlowGraph: React.FC<{
 
     return (
       <g>
-        <text x={barX} y={progressY - 10} fontSize={9} fill="#718096" fontWeight="600">수질 진행도</text>
-        <text x={barX + barW} y={progressY - 10} textAnchor="end" fontSize={8} fill="#a0aec0">
+        <text x={barX} y={progressY - 10} fontSize={9} fill="#94a3b8" fontWeight="600">수질 진행도</text>
+        <text x={barX + barW} y={progressY - 10} textAnchor="end" fontSize={8} fill="#64748b">
           원수 &#8594; 초순수
         </text>
-        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="#e2e8f0" />
-        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="url(#water-progress-grad)" />
-        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="white" opacity={0}>
-          <animate attributeName="opacity" values="0;0.15;0" dur="3s" repeatCount="indefinite" />
+        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="#1e293b" />
+        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="url(#water-progress-grad)" filter="url(#pipe-glow)" />
+        <rect x={barX} y={progressY} width={barW} height={barH} rx={4} fill="rgba(56,189,248,0.1)" opacity={0}>
+          <animate attributeName="opacity" values="0;0.3;0" dur="3s" repeatCount="indefinite" />
         </rect>
         {WATER_MILESTONES.map((ms, i) => {
           const px = barX + (barW * ms.pos) / (WATER_MILESTONES.length - 1);
           return (
             <g key={`ms-${i}`}>
-              <circle cx={px} cy={progressY + barH / 2} r={5} fill="white" stroke="#3182ce" strokeWidth={1.5} />
+              <circle cx={px} cy={progressY + barH / 2} r={5} fill="#0f172a" stroke="#38bdf8" strokeWidth={1.5} />
+              <circle cx={px} cy={progressY + barH / 2} r={2} fill="#38bdf8" />
               <text x={px} y={progressY + barH + 14} textAnchor="middle"
-                fontSize={7.5} fill="#4a5568" fontWeight="600">{ms.label}</text>
+                fontSize={7.5} fill="#e2e8f0" fontWeight="600">{ms.label}</text>
               <text x={px} y={progressY + barH + 24} textAnchor="middle"
-                fontSize={6.5} fill="#a0aec0">{ms.metric}</text>
+                fontSize={6.5} fill="#64748b">{ms.metric}</text>
             </g>
           );
         })}
-        <circle r={3} fill="#2b6cb0" opacity={0}>
+        <circle r={3} fill="#38bdf8" opacity={0} filter="url(#pipe-glow)">
           <animateMotion dur="8s" repeatCount="indefinite"
             path={`M ${barX} ${progressY + barH / 2} L ${barX + barW} ${progressY + barH / 2}`} />
-          <animate attributeName="opacity" values="0;0.6;0.6;0" dur="8s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0;0.8;0.8;0" dur="8s" repeatCount="indefinite" />
           <animate attributeName="r" values="2;4;2" dur="8s" repeatCount="indefinite" />
         </circle>
       </g>
@@ -687,8 +752,10 @@ const ProcessFlowGraph: React.FC<{
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #edf2f7 100%)', borderRadius: '8px', touchAction: 'none' }}>
+      style={{ background: '#0f172a', borderRadius: '8px', touchAction: 'none' }}>
       {renderDefs()}
+      {/* Dark tech background with dot grid */}
+      <rect width={svgW} height={svgH} fill="url(#dot-grid)" />
       {renderTitleBar()}
       {renderAreaBackgrounds()}
       {renderWaterTransitions()}
@@ -715,6 +782,7 @@ const Dashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [nodeSensors, setNodeSensors] = useState<Sensor[]>([]);
   const [loadingSensors, setLoadingSensors] = useState(false);
+  const [sensorDashboard, setSensorDashboard] = useState<SensorWithObservations[]>([]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -751,11 +819,18 @@ const Dashboard: React.FC = () => {
   const handleNodeClick = useCallback(async (node: ProcessFlowNode) => {
     setSelectedNode(node);
     setNodeSensors([]);
+    setSensorDashboard([]);
     setLoadingSensors(true);
     try {
-      const res = await equipmentApi.getSensors(node.id);
-      if (res.status === 'success' && res.data) {
-        setNodeSensors(res.data);
+      const [sensorsRes, dashRes] = await Promise.all([
+        equipmentApi.getSensors(node.id),
+        anomalyApi.getSensorDashboard(node.id, 30),
+      ]);
+      if (sensorsRes.status === 'success' && sensorsRes.data) {
+        setNodeSensors(sensorsRes.data);
+      }
+      if (dashRes.status === 'success' && dashRes.data) {
+        setSensorDashboard(dashRes.data.sensors || []);
       }
     } catch {
       // ignore — sensor info is supplementary
@@ -976,20 +1051,20 @@ const Dashboard: React.FC = () => {
               if (areaNodes.length === 0) return null;
               const avgHealth = areaNodes.reduce((s, n) => s + (n.healthScore || 0), 0) / areaNodes.length;
               const color = AREA_COLORS[areaId];
-              const healthColor = avgHealth < 70 ? '#e53e3e' : avgHealth < 85 ? '#dd6b20' : '#38a169';
+              const healthColor = avgHealth < 70 ? '#ef4444' : avgHealth < 85 ? '#f59e0b' : '#22c55e';
               const wq = WATER_QUALITY[areaId];
               return (
                 <span key={areaId} className="area-chip"
-                  style={{ background: `${color}15`, color: color, border: `1px solid ${color}30` }}>
+                  style={{ background: `${color}18`, color: color, border: `1px solid ${color}35` }}>
                   {AREA_NAMES[areaId]}
                   <span className="area-chip-score" style={{ color: healthColor }}>
                     {avgHealth.toFixed(0)}%
                   </span>
-                  <span style={{ color: '#a0aec0', fontSize: '0.6rem' }}>
+                  <span style={{ color: '#64748b', fontSize: '0.6rem' }}>
                     ({areaNodes.length}대)
                   </span>
                   {wq && (
-                    <span style={{ color: '#718096', fontSize: '0.55rem', marginLeft: '0.2rem' }}>
+                    <span style={{ color: '#64748b', fontSize: '0.55rem', marginLeft: '0.2rem' }}>
                       {wq.keyMetric}
                     </span>
                   )}
@@ -1011,41 +1086,67 @@ const Dashboard: React.FC = () => {
           )}
         </div>
 
-        {/* Legend */}
-        <div className="flow-legend">
+        {/* Legend — dark theme */}
+        <div className="flow-legend" style={{ background: '#0f172a', color: '#64748b', border: '1px solid #1e293b' }}>
           <div className="flow-legend-section">
-            <span style={{ fontWeight: 600, color: '#4a5568' }}>상태:</span>
+            <span style={{ fontWeight: 600, color: '#94a3b8' }}>상태:</span>
             <span className="flow-legend-item">
-              <span className="flow-legend-dot" style={{ background: '#38a169' }}></span> 정상
+              <span className="flow-legend-dot" style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e80' }}></span> 정상
             </span>
             <span className="flow-legend-item">
-              <span className="flow-legend-dot" style={{ background: '#dd6b20' }}></span> 경고
+              <span className="flow-legend-dot" style={{ background: '#f59e0b', boxShadow: '0 0 4px #f59e0b80' }}></span> 경고
             </span>
             <span className="flow-legend-item">
-              <span className="flow-legend-dot" style={{ background: '#e53e3e' }}></span> 위험
+              <span className="flow-legend-dot" style={{ background: '#ef4444', boxShadow: '0 0 4px #ef444480' }}></span> 위험
             </span>
           </div>
           <div className="flow-legend-section">
             <span className="flow-legend-item">
-              <span className="flow-legend-line" style={{ background: 'linear-gradient(90deg, #90cdf4, #63b3ed)' }}></span>
+              <span className="flow-legend-line" style={{ background: 'linear-gradient(90deg, #0ea5e9, #38bdf8)', boxShadow: '0 0 4px rgba(56,189,248,0.5)' }}></span>
               물 흐름 방향
             </span>
           </div>
         </div>
 
-        {/* Selected Node Detail Panel with Water Quality + Sensors */}
+        {/* Selected Node Detail Panel — Digital Twin Dark Theme */}
         {selectedNode && (() => {
-          const statusColor = getStatusColor(selectedNode.status, selectedNode.healthScore);
           const healthPct = selectedNode.healthScore || 0;
           const isCritical = healthPct < 70;
           const isWarning = healthPct >= 70 && healthPct < 85;
-          const healthBarClass = isCritical ? 'critical' : isWarning ? 'warning' : 'normal';
           const wq = WATER_QUALITY[selectedNode.areaId || ''];
+          const areaColor = AREA_COLORS[selectedNode.areaId || ''] || '#4a5568';
+
+          // Arc gauge calculation: semi-circle r=45, circumference = π × 45 ≈ 141.37
+          const arcR = 45;
+          const arcCircumference = Math.PI * arcR;
+          const arcOffset = arcCircumference * (1 - healthPct / 100);
+          const arcColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#22c55e';
+
+          // Sparkline helper: find dashboard sensor data for a given sensorId
+          const getDashSensor = (sensorId: string): SensorWithObservations | undefined =>
+            sensorDashboard.find(s => s.sensorId === sensorId);
+
+          const getSparklineData = (sensor: SensorWithObservations) =>
+            sensor.observations.map((obs, i) => ({ idx: i, value: obs.value }));
+
+          const getTrend = (sensor: SensorWithObservations) => {
+            const obs = sensor.observations;
+            if (obs.length < 6) return { dir: 'stable' as const, pct: 0 };
+            const recent = obs.slice(-6);
+            const earlier = obs.slice(-12, -6);
+            if (earlier.length === 0) return { dir: 'stable' as const, pct: 0 };
+            const avgR = recent.reduce((s, o) => s + o.value, 0) / recent.length;
+            const avgE = earlier.reduce((s, o) => s + o.value, 0) / earlier.length;
+            const pct = avgE !== 0 ? ((avgR - avgE) / Math.abs(avgE)) * 100 : 0;
+            if (pct > 1) return { dir: 'rising' as const, pct: Math.abs(pct) };
+            if (pct < -1) return { dir: 'falling' as const, pct: Math.abs(pct) };
+            return { dir: 'stable' as const, pct: Math.abs(pct) };
+          };
 
           return (
-            <div className="flow-detail-panel">
+            <div className="flow-detail-panel dt-panel">
               <div className="flow-detail-header" style={{
-                background: `linear-gradient(90deg, ${AREA_COLORS[selectedNode.areaId || ''] || '#4a5568'}, #4a5568)`,
+                background: `linear-gradient(90deg, ${areaColor}cc, #0f172a)`,
               }}>
                 <h3>{selectedNode.nameKo || selectedNode.name} ({selectedNode.id})</h3>
                 <span className={`badge ${
@@ -1055,63 +1156,79 @@ const Dashboard: React.FC = () => {
                   {selectedNode.status || 'Unknown'}
                 </span>
               </div>
-              <div className="flow-detail-body">
-                <div className="flow-detail-cell">
-                  <div className="detail-label">건강도</div>
-                  <div className="detail-value">
-                    <div className="health-gauge">
-                      <span style={{ color: statusColor, minWidth: '42px' }}>{healthPct.toFixed(1)}%</span>
-                      <div className="health-gauge-bar">
-                        <div className={`health-gauge-fill health-bar-fill ${healthBarClass}`}
-                          style={{ width: `${healthPct}%` }}></div>
+
+              {/* Top section: Arc gauge + Info grid */}
+              <div style={{ display: 'flex', gap: '1rem', padding: '1rem', alignItems: 'flex-start' }}>
+                {/* SVG Arc Gauge */}
+                <div style={{ flexShrink: 0, textAlign: 'center' }}>
+                  <svg width={120} height={80} viewBox="0 0 120 80">
+                    {/* Background arc */}
+                    <path d="M 15,70 A 45,45 0 0,1 105,70" fill="none"
+                      stroke="#1e293b" strokeWidth={10} strokeLinecap="round" />
+                    {/* Foreground arc — health */}
+                    <path d="M 15,70 A 45,45 0 0,1 105,70" fill="none"
+                      stroke={arcColor} strokeWidth={10} strokeLinecap="round"
+                      strokeDasharray={arcCircumference}
+                      strokeDashoffset={arcOffset}
+                      style={{ transition: 'stroke-dashoffset 0.8s ease, stroke 0.3s ease',
+                        filter: `drop-shadow(0 0 6px ${arcColor}80)` }} />
+                    {/* Center text */}
+                    <text x={60} y={58} textAnchor="middle" fontSize={22} fontWeight="700"
+                      fill={arcColor}>{healthPct.toFixed(0)}</text>
+                    <text x={60} y={72} textAnchor="middle" fontSize={9} fill="#64748b">%</text>
+                  </svg>
+                  <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '-0.2rem' }}>건강도 점수</div>
+                </div>
+
+                {/* Info cells */}
+                <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                  <div className="dt-info-cell">
+                    <div className="dt-info-label">공정 영역</div>
+                    <div className="dt-info-value" style={{ color: areaColor }}>
+                      {AREA_NAMES[selectedNode.areaId || ''] || '-'}
+                    </div>
+                  </div>
+                  <div className="dt-info-cell">
+                    <div className="dt-info-label">장비 상세</div>
+                    <div className="dt-info-value">
+                      <Link to="/equipment" style={{
+                        color: '#38bdf8', textDecoration: 'none', fontSize: '0.8rem',
+                      }}>
+                        장비 관리 &#8594;
+                      </Link>
+                    </div>
+                  </div>
+                  {wq && (
+                    <>
+                      <div className="dt-info-cell">
+                        <div className="dt-info-label">입수 수질</div>
+                        <div className="dt-info-value" style={{ fontSize: '0.78rem' }}>{wq.input}</div>
                       </div>
-                    </div>
-                  </div>
+                      <div className="dt-info-cell">
+                        <div className="dt-info-label">출수 수질</div>
+                        <div className="dt-info-value" style={{ fontSize: '0.78rem', color: '#38bdf8' }}>{wq.output}</div>
+                      </div>
+                      <div className="dt-info-cell" style={{ gridColumn: '1 / -1' }}>
+                        <div className="dt-info-label">처리 공정</div>
+                        <div className="dt-info-value" style={{ fontSize: '0.78rem' }}>{wq.process}</div>
+                      </div>
+                    </>
+                  )}
                 </div>
-                <div className="flow-detail-cell">
-                  <div className="detail-label">공정 영역</div>
-                  <div className="detail-value" style={{ color: AREA_COLORS[selectedNode.areaId || ''] }}>
-                    {AREA_NAMES[selectedNode.areaId || ''] || '-'}
-                  </div>
-                </div>
-                <div className="flow-detail-cell">
-                  <div className="detail-label">장비 상세보기</div>
-                  <div className="detail-value">
-                    <Link to="/equipment" style={{
-                      color: '#3182ce', textDecoration: 'none', fontSize: '0.85rem',
-                      display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-                    }}>
-                      장비 관리 페이지 &#8594;
-                    </Link>
-                  </div>
-                </div>
-                {wq && (
-                  <>
-                    <div className="flow-detail-cell">
-                      <div className="detail-label">입수 수질</div>
-                      <div className="detail-value" style={{ fontSize: '0.8rem' }}>{wq.input}</div>
-                    </div>
-                    <div className="flow-detail-cell">
-                      <div className="detail-label">출수 수질</div>
-                      <div className="detail-value" style={{ fontSize: '0.8rem', color: '#2c5282' }}>{wq.output}</div>
-                    </div>
-                    <div className="flow-detail-cell">
-                      <div className="detail-label">처리 공정</div>
-                      <div className="detail-value" style={{ fontSize: '0.8rem' }}>{wq.process}</div>
-                    </div>
-                  </>
-                )}
               </div>
 
-              {/* Sensor information section */}
-              <div style={{ borderTop: '1px solid #e2e8f0', padding: '0.75rem 1rem' }}>
-                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#4a5568', marginBottom: '0.5rem' }}>
+              {/* Sensor section with sparklines */}
+              <div style={{ borderTop: '1px solid #1e293b', padding: '0.75rem 1rem' }}>
+                <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#94a3b8', marginBottom: '0.5rem',
+                  display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#38bdf8',
+                    display: 'inline-block', animation: loadingSensors ? 'none' : undefined }}></span>
                   센서 정보 ({loadingSensors ? '로딩...' : `${nodeSensors.length}개`})
                 </div>
                 {loadingSensors ? (
-                  <div style={{ fontSize: '0.75rem', color: '#a0aec0', padding: '0.5rem 0' }}>센서 데이터 로딩 중...</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem 0' }}>센서 데이터 로딩 중...</div>
                 ) : nodeSensors.length > 0 ? (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '0.4rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '0.5rem' }}>
                     {nodeSensors.map(sensor => {
                       const val = sensor.latestValue;
                       const isNormal = val !== undefined && val !== null
@@ -1119,30 +1236,79 @@ const Dashboard: React.FC = () => {
                         && (sensor.normalMax === undefined || sensor.normalMax === null || val <= sensor.normalMax);
                       const isWarningS = val !== undefined && val !== null && sensor.warningThreshold !== undefined
                         && sensor.warningThreshold !== null && val >= sensor.warningThreshold;
-                      const dotColor = isWarningS ? '#e53e3e' : isNormal ? '#38a169' : '#dd6b20';
+                      const dotColor = isWarningS ? '#ef4444' : isNormal ? '#22c55e' : '#f59e0b';
+                      const dashSensor = getDashSensor(sensor.sensorId);
+                      const sparkData = dashSensor ? getSparklineData(dashSensor) : [];
+                      const trend = dashSensor ? getTrend(dashSensor) : { dir: 'stable' as const, pct: 0 };
+                      const trendArrow = trend.dir === 'rising' ? '\u2191' : trend.dir === 'falling' ? '\u2193' : '\u2192';
+                      const trendColor = trend.dir === 'rising' ? '#ef4444' : trend.dir === 'falling' ? '#22c55e' : '#64748b';
+
                       return (
-                        <div key={sensor.sensorId} style={{
-                          background: '#f7fafc', borderRadius: '6px', padding: '0.4rem 0.5rem',
-                          border: '1px solid #e2e8f0', fontSize: '0.72rem',
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.2rem' }}>
-                            <span style={{
-                              width: '6px', height: '6px', borderRadius: '50%',
-                              background: dotColor, flexShrink: 0,
-                            }}></span>
-                            <span style={{ fontWeight: 600, color: '#2d3748', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {sensor.name || sensor.sensorId}
+                        <div key={sensor.sensorId} className="dt-sensor-card">
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', minWidth: 0 }}>
+                              <span style={{
+                                width: 7, height: 7, borderRadius: '50%',
+                                background: dotColor, flexShrink: 0,
+                                boxShadow: `0 0 6px ${dotColor}80`,
+                              }}></span>
+                              <span style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.78rem',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {sensor.name || sensor.sensorId}
+                              </span>
+                            </div>
+                            <span style={{ color: trendColor, fontSize: '0.72rem', fontWeight: 600, flexShrink: 0 }}>
+                              {trendArrow} {trend.pct.toFixed(1)}%
                             </span>
                           </div>
-                          <div style={{ color: '#718096', fontSize: '0.65rem' }}>
-                            {sensor.type || '-'} | {val !== undefined && val !== null ? `${val.toFixed(2)} ${sensor.unit || ''}` : 'N/A'}
+                          <div style={{ color: '#64748b', fontSize: '0.62rem', marginBottom: '0.3rem' }}>
+                            {sensor.type || '-'} | {sensor.unit || '-'}
+                          </div>
+                          {/* Mini Sparkline */}
+                          {sparkData.length > 2 ? (
+                            <div style={{ height: 40, marginBottom: '0.2rem' }}>
+                              <ResponsiveContainer width="100%" height="100%">
+                                <LineChart data={sparkData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                                  {dashSensor && dashSensor.normalMin != null && dashSensor.normalMax != null && (
+                                    <ReferenceArea
+                                      y1={dashSensor.normalMin}
+                                      y2={dashSensor.normalMax}
+                                      fill="#22c55e"
+                                      fillOpacity={0.08}
+                                    />
+                                  )}
+                                  <YAxis domain={['dataMin', 'dataMax']} hide />
+                                  <XAxis dataKey="idx" hide />
+                                  <Tooltip
+                                    contentStyle={{ background: '#1e293b', border: '1px solid #334155',
+                                      borderRadius: 6, fontSize: '0.68rem', padding: '0.2rem 0.4rem', color: '#e2e8f0' }}
+                                    formatter={(v: number) => [`${v.toFixed(2)} ${sensor.unit || ''}`, '']}
+                                    labelFormatter={() => ''}
+                                  />
+                                  <Line type="monotone" dataKey="value" stroke="#38bdf8" strokeWidth={1.5}
+                                    dot={false} activeDot={{ r: 2, fill: '#38bdf8' }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          ) : (
+                            <div style={{ height: 40, display: 'flex', alignItems: 'center',
+                              justifyContent: 'center', color: '#334155', fontSize: '0.62rem' }}>
+                              관측 데이터 부족
+                            </div>
+                          )}
+                          {/* Current value */}
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                            <span style={{ fontSize: '1rem', fontWeight: 700, color: '#e2e8f0' }}>
+                              {val !== undefined && val !== null ? val.toFixed(2) : '-'}
+                              <span style={{ fontSize: '0.65rem', color: '#64748b', marginLeft: '0.2rem' }}>{sensor.unit || ''}</span>
+                            </span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
                 ) : (
-                  <div style={{ fontSize: '0.72rem', color: '#a0aec0' }}>센서 데이터 없음</div>
+                  <div style={{ fontSize: '0.72rem', color: '#334155' }}>센서 데이터 없음</div>
                 )}
               </div>
             </div>

@@ -23,7 +23,9 @@ Thumbs.db
 
 # Logs
 *.log
+*.pid
 npm-debug.log*
+logs/
 
 # Docker
 docker/neo4j/data/

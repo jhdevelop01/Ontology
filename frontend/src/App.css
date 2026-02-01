@@ -2044,3 +2044,88 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(49, 130, 206, 0.15);
 }
+
+/* ═══════════════════════════════════════════════════
+   Digital Twin Dark Theme — Process Flow
+   ═══════════════════════════════════════════════════ */
+
+/* Detail panel dark glassmorphism */
+.flow-detail-panel.dt-panel {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 0 1px rgba(56, 189, 248, 0.15);
+}
+
+.flow-detail-panel.dt-panel .flow-detail-header {
+  border-bottom: 1px solid #1e293b;
+}
+
+.flow-detail-panel.dt-panel .flow-detail-header h3 {
+  color: #e2e8f0;
+}
+
+/* Info cells inside detail panel */
+.dt-info-cell {
+  padding: 0.5rem 0.6rem;
+  background: rgba(30, 41, 59, 0.5);
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+}
+
+.dt-info-label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.2rem;
+}
+
+.dt-info-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+/* Sensor sparkline card — dark */
+.dt-sensor-card {
+  background: #1e293b;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #334155;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dt-sensor-card:hover {
+  border-color: rgba(56, 189, 248, 0.3);
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.08);
+}
+
+/* Flow legend dark compatibility */
+.flow-detail-panel.dt-panel + .flow-legend,
+.dt-panel ~ .flow-legend {
+  background: #0f172a;
+  color: #64748b;
+}
+
+/* Arc gauge animation */
+@keyframes arc-fill-anim {
+  from { stroke-dashoffset: 141.37; }
+}
+
+/* Live pulse indicator */
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Neon glow on flow-dash for dark theme */
+@keyframes flow-dash-dt {
+  to { stroke-dashoffset: -20; }
+}
+
+/* Area chip dark theme compatibility */
+.flow-detail-panel.dt-panel .area-chip {
+  background: rgba(30, 41, 59, 0.8);
+  border-color: #334155;
+}
