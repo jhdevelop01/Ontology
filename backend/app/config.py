@@ -31,6 +31,12 @@ class Config:
     ENERGY_PREDICTION_HORIZON = int(os.environ.get('ENERGY_PREDICTION_HORIZON', '96'))  # 15-min intervals for 24h
     ENERGY_LOOKBACK_DAYS = int(os.environ.get('ENERGY_LOOKBACK_DAYS', '10'))
 
+    # InfluxDB Configuration
+    INFLUXDB_URL = os.environ.get('INFLUXDB_URL', 'http://localhost:8086')
+    INFLUXDB_TOKEN = os.environ.get('INFLUXDB_TOKEN', 'upw-influxdb-token-2024')
+    INFLUXDB_ORG = os.environ.get('INFLUXDB_ORG', 'upw')
+    INFLUXDB_BUCKET = os.environ.get('INFLUXDB_BUCKET', 'energy_metrics')
+
 
 class DevelopmentConfig(Config):
     """Development configuration"""

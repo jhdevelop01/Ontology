@@ -245,10 +245,23 @@ class Neo4jService:
             return None
 
     @classmethod
-    def get_sensor_observations(cls, sensor_id: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get observations for a sensor"""
-        query = """
-        MATCH (s:Sensor {sensorId: $sensor_id})-[:HAS_OBSERVATION]->(o:Observation)
+    def get_sensor_observations(cls, sensor_id: str, start=None, end=None, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get observations for a sensor with optional time range filtering"""
+        query = "MATCH (s:Sensor {sensorId: $sensor_id})-[:HAS_OBSERVATION]->(o:Observation)"
+        params: Dict[str, Any] = {'sensor_id': sensor_id, 'limit': limit}
+
+        conditions = []
+        if start:
+            conditions.append("o.timestamp >= $start")
+            params['start'] = start.isoformat() if hasattr(start, 'isoformat') else str(start)
+        if end:
+            conditions.append("o.timestamp <= $end")
+            params['end'] = end.isoformat() if hasattr(end, 'isoformat') else str(end)
+
+        if conditions:
+            query += " WHERE " + " AND ".join(conditions)
+
+        query += """
         RETURN o.timestamp AS timestamp,
                o.value AS value,
                o.unit AS unit,
@@ -257,7 +270,7 @@ class Neo4jService:
         LIMIT $limit
         """
         with cls.session() as session:
-            result = session.run(query, sensor_id=sensor_id, limit=limit)
+            result = session.run(query, **params)
             return [cls._serialize_record(dict(r)) for r in result]
 
     # =========================================================================
@@ -593,3 +606,56 @@ class Neo4jService:
                     'Critical': health_stats['critical']
                 }
             }
+
+    @classmethod
+    def get_equipment_sensor_dashboard(cls, equipment_id: str, obs_limit: int = 192) -> Optional[Dict[str, Any]]:
+        """Get all sensors with thresholds and recent observations for sensor dashboard.
+        Returns equipment info + sensors with their observation history in a single query.
+        """
+        with cls.session() as session:
+            # First get equipment info
+            eq_result = session.run("""
+                MATCH (e:Equipment {equipmentId: $equipment_id})
+                RETURN e.equipmentId AS equipmentId,
+                       e.name AS equipmentName,
+                       e.nameEn AS equipmentNameEn,
+                       e.healthScore AS healthScore,
+                       e.status AS status
+            """, equipment_id=equipment_id)
+            eq_record = eq_result.single()
+            if not eq_record:
+                return None
+
+            equipment_data = serialize_neo4j_dict(dict(eq_record))
+
+            # Get all sensors with thresholds
+            sensor_result = session.run("""
+                MATCH (e:Equipment {equipmentId: $equipment_id})-[:HAS_SENSOR]->(s:Sensor)
+                RETURN s.sensorId AS sensorId,
+                       s.name AS name,
+                       s.type AS type,
+                       s.unit AS unit,
+                       s.normalMin AS normalMin,
+                       s.normalMax AS normalMax,
+                       s.warning AS warningThreshold,
+                       s.critical AS criticalThreshold,
+                       s.min AS minValue,
+                       s.max AS maxValue
+                ORDER BY s.sensorId
+            """, equipment_id=equipment_id)
+            sensors = [serialize_neo4j_dict(dict(r)) for r in sensor_result]
+
+            # Get observations for each sensor
+            for sensor in sensors:
+                obs_result = session.run("""
+                    MATCH (s:Sensor {sensorId: $sensor_id})-[:HAS_OBSERVATION]->(o:Observation)
+                    RETURN o.timestamp AS timestamp,
+                           o.value AS value,
+                           o.unit AS unit
+                    ORDER BY o.timestamp ASC
+                    LIMIT $limit
+                """, sensor_id=sensor['sensorId'], limit=obs_limit)
+                sensor['observations'] = [serialize_neo4j_dict(dict(r)) for r in obs_result]
+
+            equipment_data['sensors'] = sensors
+            return equipment_data

@@ -47,7 +47,7 @@ def get_sensor_observations(sensor_id: str):
         end_dt = datetime.fromisoformat(end_time) if end_time else None
 
         observations = Neo4jService.get_sensor_observations(
-            sensor_id, start_dt, end_dt, limit
+            sensor_id, start=start_dt, end=end_dt, limit=limit
         )
         return jsonify({
             'status': 'success',

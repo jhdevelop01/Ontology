@@ -3,15 +3,25 @@ export interface Equipment {
   uri: string;
   equipmentId: string;
   name: string;
+  nameEn?: string;
+  type?: string;
+  category?: string;
   manufacturer?: string;
   modelNumber?: string;
+  model?: string;
   installDate?: string;
   ratedPower?: number;
   operatingHours?: number;
   healthScore?: number;
   healthStatus?: string;
+  status?: string;
+  areaId?: string;
+  areaName?: string;
+  sensorCount?: number;
   sensors?: string[];
   failureModes?: string[];
+  maintenanceCount?: number;
+  anomalyCount?: number;
 }
 
 // Sensor Types
@@ -19,13 +29,20 @@ export interface Sensor {
   uri: string;
   sensorId: string;
   name: string;
+  type?: string;
+  unit?: string;
   minValue?: number;
   maxValue?: number;
   normalRangeMin?: number;
   normalRangeMax?: number;
+  normalMin?: number;
+  normalMax?: number;
   warningThreshold?: number;
   criticalThreshold?: number;
   equipmentId?: string;
+  equipmentName?: string;
+  latestValue?: number;
+  latestTimestamp?: string;
 }
 
 // Observation Types
@@ -178,5 +195,65 @@ export interface ProcessArea {
   order: number;
 }
 
+// Energy Time-Series Types
+export interface EnergyTimeseries {
+  equipmentId: string;
+  timestamp: string;
+  powerKw: number;
+}
+
+export interface EnergyTimeseriesSummary {
+  equipmentId: string;
+  equipmentName: string;
+  totalKwh: number;
+  avgKw: number;
+  maxKw: number;
+  minKw: number;
+  dataPoints: number;
+}
+
+// Sensor Dashboard Types (for Anomaly Monitor)
+export interface SensorObservationPoint {
+  timestamp: string;
+  value: number;
+  unit?: string;
+}
+
+export interface SensorWithObservations {
+  sensorId: string;
+  name: string;
+  type: string;
+  unit: string;
+  normalMin: number | null;
+  normalMax: number | null;
+  warningThreshold: number | null;
+  criticalThreshold: number | null;
+  minValue: number | null;
+  maxValue: number | null;
+  observations: SensorObservationPoint[];
+}
+
+export interface SensorDashboardData {
+  equipmentId: string;
+  equipmentName: string;
+  equipmentNameEn?: string;
+  healthScore: number;
+  status: string;
+  sensors: SensorWithObservations[];
+}
+
 // Health Status Type
 export type HealthStatus = 'Normal' | 'Warning' | 'Critical';
+
+// Sensor Statistics (computed client-side)
+export interface SensorStats {
+  current: number;
+  min: number;
+  max: number;
+  average: number;
+  stdDev: number;
+  normalPct: number;
+  warningPct: number;
+  criticalPct: number;
+  count: number;
+}

@@ -17,6 +17,9 @@ numpy>=2.0.0
 # Machine Learning (lightweight)
 scikit-learn>=1.5.0
 
+# InfluxDB time-series database
+influxdb-client>=1.38.0
+
 # Utilities
 python-dotenv>=1.0.0
 

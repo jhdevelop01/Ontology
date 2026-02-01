@@ -5,11 +5,12 @@ import EquipmentList from './pages/EquipmentList';
 import AnomalyMonitor from './pages/AnomalyMonitor';
 import EnergyPrediction from './pages/EnergyPrediction';
 import OntologyExplorer from './pages/OntologyExplorer';
+import SensorDetail from './pages/SensorDetail';
 import './App.css';
 
 const NavLink: React.FC<{ to: string; children: React.ReactNode }> = ({ to, children }) => {
   const location = useLocation();
-  const isActive = location.pathname === to;
+  const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to + '/'));
 
   return (
     <Link
@@ -49,6 +50,7 @@ const App: React.FC = () => {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/equipment" element={<EquipmentList />} />
+            <Route path="/equipment/:equipmentId/sensor/:sensorId" element={<SensorDetail />} />
             <Route path="/anomaly" element={<AnomalyMonitor />} />
             <Route path="/energy" element={<EnergyPrediction />} />
             <Route path="/ontology" element={<OntologyExplorer />} />

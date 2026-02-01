@@ -7,6 +7,9 @@ import type {
   Anomaly,
   AnomalyResult,
   EnergyPredictionResult,
+  EnergyTimeseries,
+  EnergyTimeseriesSummary,
+  SensorDashboardData,
   MaintenanceSchedule,
   MaintenanceRecommendation,
   OntologyClass,
@@ -133,6 +136,13 @@ export const anomalyApi = {
     const response = await api.get(`/anomaly/history?${params}`);
     return response.data;
   },
+
+  getSensorDashboard: async (equipmentId: string, limit?: number): Promise<ApiResponse<SensorDashboardData>> => {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    const response = await api.get(`/anomaly/sensor-dashboard/${equipmentId}?${params}`);
+    return response.data;
+  },
 };
 
 // Energy API
@@ -158,6 +168,28 @@ export const energyApi = {
     const params = new URLSearchParams();
     if (date) params.append('date', date);
     const response = await api.get(`/energy/accuracy?${params}`);
+    return response.data;
+  },
+
+  getTimeseries: async (equipmentId: string, range: string = '24h'): Promise<ApiResponse<EnergyTimeseries[]>> => {
+    const params = new URLSearchParams();
+    params.append('equipmentId', equipmentId);
+    params.append('range', range);
+    const response = await api.get(`/energy/timeseries?${params}`);
+    return response.data;
+  },
+
+  getAllTimeseries: async (range: string = '24h'): Promise<ApiResponse<Record<string, Array<{ timestamp: string; powerKw: number }>>>> => {
+    const params = new URLSearchParams();
+    params.append('range', range);
+    const response = await api.get(`/energy/timeseries/all?${params}`);
+    return response.data;
+  },
+
+  getTimeseriesSummary: async (range: string = '7d'): Promise<ApiResponse<EnergyTimeseriesSummary[]>> => {
+    const params = new URLSearchParams();
+    params.append('range', range);
+    const response = await api.get(`/energy/timeseries/summary?${params}`);
     return response.data;
   },
 };

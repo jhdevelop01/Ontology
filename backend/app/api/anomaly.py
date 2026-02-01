@@ -126,3 +126,21 @@ def get_anomaly_history():
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/sensor-dashboard/<equipment_id>', methods=['GET'])
+def get_sensor_dashboard(equipment_id: str):
+    """Get all sensors with thresholds and observation history for dashboard charts"""
+    try:
+        limit = request.args.get('limit', 192, type=int)
+        data = Neo4jService.get_equipment_sensor_dashboard(equipment_id, obs_limit=limit)
+
+        if not data:
+            return jsonify({'status': 'error', 'message': 'Equipment not found'}), 404
+
+        return jsonify({
+            'status': 'success',
+            'data': data
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500

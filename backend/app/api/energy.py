@@ -4,6 +4,7 @@ Energy Prediction API endpoints
 from flask import Blueprint, jsonify, request
 from datetime import datetime, timedelta
 from ..services.neo4j_service import Neo4jService
+from ..services.influxdb_service import InfluxDBService
 from ..ml.energy_predictor import EnergyPredictor
 
 bp = Blueprint('energy', __name__)
@@ -135,6 +136,92 @@ def get_prediction_accuracy():
                     'mape': round(mape, 2)
                 }
             }
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ── InfluxDB Time-Series Endpoints ──────────────────────────────
+
+RANGE_MAP = {
+    '1h': '-1h',
+    '6h': '-6h',
+    '24h': '-24h',
+    '7d': '-7d',
+    '30d': '-30d',
+}
+
+
+@bp.route('/timeseries', methods=['GET'])
+def get_timeseries():
+    """Get time-series energy data for a specific equipment"""
+    try:
+        equipment_id = request.args.get('equipmentId')
+        range_str = request.args.get('range', '24h')
+
+        if not equipment_id:
+            return jsonify({'status': 'error', 'message': 'equipmentId is required'}), 400
+
+        influx_range = RANGE_MAP.get(range_str, '-24h')
+        data = InfluxDBService.query_energy_data(equipment_id, start=influx_range)
+
+        return jsonify({
+            'status': 'success',
+            'data': data,
+            'count': len(data)
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/timeseries/all', methods=['GET'])
+def get_all_timeseries():
+    """Get time-series energy data for all equipment"""
+    try:
+        range_str = request.args.get('range', '24h')
+        influx_range = RANGE_MAP.get(range_str, '-24h')
+        data = InfluxDBService.query_all_equipment_energy(start=influx_range)
+
+        return jsonify({
+            'status': 'success',
+            'data': data,
+            'equipmentCount': len(data)
+        })
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@bp.route('/timeseries/summary', methods=['GET'])
+def get_timeseries_summary():
+    """Get energy summary (total, avg, max, min) per equipment"""
+    try:
+        range_str = request.args.get('range', '7d')
+        influx_range = RANGE_MAP.get(range_str, '-7d')
+        data = InfluxDBService.get_equipment_energy_summary(start=influx_range)
+
+        # Equipment name mapping
+        name_map = {
+            'RO-001-PM': 'RO Unit 1',
+            'RO-002-PM': 'RO Unit 2',
+            'EDI-001-PM': 'EDI Unit 1',
+            'EDI-002-PM': 'EDI Unit 2',
+            'UV-001-PM': 'UV Sterilizer 1',
+            'UV-002-PM': 'UV Sterilizer 2',
+            'PUMP-001-PM': 'Circulation Pump 1',
+            'PUMP-003-PM': 'Distribution Pump',
+            'HP-001-PM': 'High Pressure Pump',
+        }
+
+        for item in data:
+            item['equipmentName'] = name_map.get(item['equipmentId'], item['equipmentId'])
+
+        # Sort by totalKwh descending
+        data.sort(key=lambda x: x.get('totalKwh', 0), reverse=True)
+
+        return jsonify({
+            'status': 'success',
+            'data': data,
+            'count': len(data)
         })
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
