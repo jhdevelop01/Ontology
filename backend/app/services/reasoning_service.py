@@ -21,11 +21,14 @@ from .neo4j_service import Neo4jService, serialize_neo4j_dict, serialize_neo4j_v
 class ReasoningTrace:
     """추론 과정을 추적하는 클래스"""
 
-    def __init__(self, rule_id: str, rule_name: str, rule_description: str):
+    def __init__(self, rule_id: str, rule_name: str, rule_description: str,
+                 condition: str = "", inference: str = ""):
         self.id = f"TRACE-{uuid4().hex[:8]}"
         self.rule_id = rule_id
         self.rule_name = rule_name
         self.rule_description = rule_description
+        self.condition = condition
+        self.inference = inference
         self.started_at = datetime.now()
         self.completed_at = None
         self.steps: List[Dict[str, Any]] = []
@@ -98,6 +101,8 @@ class ReasoningTrace:
             'ruleId': self.rule_id,
             'ruleName': self.rule_name,
             'ruleDescription': self.rule_description,
+            'condition': self.condition,
+            'inference': self.inference,
             'startedAt': self.started_at.isoformat(),
             'completedAt': self.completed_at.isoformat() if self.completed_at else None,
             'result': self.result,
@@ -111,7 +116,21 @@ class ReasoningTrace:
     def _generate_summary(self) -> str:
         """추론 결과 요약 생성"""
         if self.result == "NO_MATCH":
-            return f"'{self.rule_name}' 규칙을 적용했으나 조건에 맞는 데이터가 없습니다."
+            # Find where the pipeline stopped
+            failed_step = None
+            last_success = None
+            for step in self.steps:
+                if step.get('dataCount', 0) > 0:
+                    last_success = step
+                elif failed_step is None:
+                    failed_step = step
+
+            parts = [f"'{self.rule_name}' 규칙: 조건에 맞는 데이터 없음."]
+            if failed_step:
+                parts.append(f"'{failed_step.get('description', '')}' 단계에서 결과가 0건이었습니다.")
+            if last_success:
+                parts.append(f"이전 단계 '{last_success.get('description', '')}'에서 {last_success.get('dataCount', 0)}건이 검색되었으나 이후 필터링에서 탈락했습니다.")
+            return " ".join(parts)
         elif self.result == "SUCCESS":
             return f"'{self.rule_name}' 규칙으로 {self.inferred_count}개의 새로운 지식을 추론했습니다."
         elif self.result == "ERROR":
@@ -679,7 +698,9 @@ class ReasoningService:
         trace = ReasoningTrace(
             rule_id=rule['id'],
             rule_name=rule['name'],
-            rule_description=rule['description']
+            rule_description=rule['description'],
+            condition=rule.get('condition', ''),
+            inference=rule.get('inference', '')
         )
 
         try:
